@@ -11207,7 +11207,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse_function_args(&mut self) -> Result<FunctionArg, ParserError> {
         if self.peek_nth_token(1) == Token::RArrow {
-            let name = self.parse_identifier(false)?;
+            let name = Expr::Identifier(self.parse_identifier(false)?);
 
             self.expect_token(&Token::RArrow)?;
             let arg = self.parse_wildcard_expr()?.into();
@@ -11220,7 +11220,7 @@ impl<'a> Parser<'a> {
         } else if self.dialect.supports_named_fn_args_with_eq_operator()
             && self.peek_nth_token(1) == Token::Eq
         {
-            let name = self.parse_identifier(false)?;
+            let name = Expr::Identifier(self.parse_identifier(false)?);
 
             self.expect_token(&Token::Eq)?;
             let arg = self.parse_wildcard_expr()?.into();
@@ -11233,7 +11233,7 @@ impl<'a> Parser<'a> {
         } else if dialect_of!(self is DuckDbDialect | GenericDialect)
             && self.peek_nth_token(1) == Token::Assignment
         {
-            let name = self.parse_identifier(false)?;
+            let name = Expr::Identifier(self.parse_identifier(false)?);
 
             self.expect_token(&Token::Assignment)?;
             let arg = self.parse_expr()?.into();
@@ -11244,7 +11244,19 @@ impl<'a> Parser<'a> {
                 operator: FunctionArgOperator::Assignment,
             })
         } else {
-            Ok(FunctionArg::Unnamed(self.parse_wildcard_expr()?.into()))
+            let name = self.parse_wildcard_expr()?;
+            if dialect_of!(self is MsSqlDialect) {
+                // FUNC(<expr> : <expr>)
+                if self.consume_token(&Token::Colon) {
+                    let arg = self.parse_expr()?.into();
+                    return Ok(FunctionArg::Named {
+                        name,
+                        arg,
+                        operator: FunctionArgOperator::Colon,
+                    });
+                }
+            }
+            Ok(FunctionArg::Unnamed(name.into()))
         }
     }
 
@@ -11288,18 +11300,33 @@ impl<'a> Parser<'a> {
     /// FIRST_VALUE(x IGNORE NULL);
     /// ```
     fn parse_function_argument_list(&mut self) -> Result<FunctionArgumentList, ParserError> {
+        let mut clauses = vec![];
+
+        if dialect_of!(self is MsSqlDialect) {
+            // JSON_ARRAY(NULL ON NULL)
+            if self.parse_keywords(&[Keyword::NULL, Keyword::ON, Keyword::NULL]) {
+                clauses.push(FunctionArgumentClause::JsonNullClause(
+                    JsonNullClause::NullOnNull,
+                ));
+            }
+            // JSON_ARRAY(ABSENT ON NULL)
+            else if self.parse_keywords(&[Keyword::ABSENT, Keyword::ON, Keyword::NULL]) {
+                clauses.push(FunctionArgumentClause::JsonNullClause(
+                    JsonNullClause::AbsentOnNull,
+                ));
+            }
+        }
+
         if self.consume_token(&Token::RParen) {
             return Ok(FunctionArgumentList {
                 duplicate_treatment: None,
                 args: vec![],
-                clauses: vec![],
+                clauses,
             });
         }
 
         let duplicate_treatment = self.parse_duplicate_treatment()?;
         let args = self.parse_comma_separated(Parser::parse_function_args)?;
-
-        let mut clauses = vec![];
 
         if self.dialect.supports_window_function_null_treatment_arg() {
             if let Some(null_treatment) = self.parse_null_treatment()? {
@@ -11339,6 +11366,21 @@ impl<'a> Parser<'a> {
 
         if let Some(on_overflow) = self.parse_listagg_on_overflow()? {
             clauses.push(FunctionArgumentClause::OnOverflow(on_overflow));
+        }
+
+        if dialect_of!(self is MsSqlDialect) {
+            // JSON_ARRAY(<arg-list> NULL ON NULL)
+            if self.parse_keywords(&[Keyword::NULL, Keyword::ON, Keyword::NULL]) {
+                clauses.push(FunctionArgumentClause::JsonNullClause(
+                    JsonNullClause::NullOnNull,
+                ));
+            }
+            // JSON_ARRAY(<keyvalue-pair-list> ABSENT ON NULL)
+            else if self.parse_keywords(&[Keyword::ABSENT, Keyword::ON, Keyword::NULL]) {
+                clauses.push(FunctionArgumentClause::JsonNullClause(
+                    JsonNullClause::AbsentOnNull,
+                ));
+            }
         }
 
         self.expect_token(&Token::RParen)?;
