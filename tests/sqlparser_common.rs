@@ -4411,8 +4411,9 @@ fn parse_explain_query_plan() {
 
 #[test]
 fn parse_named_argument_function() {
+    let dialects = all_dialects_where(|d| d.supports_named_fn_args_with_rarrow_operator());
     let sql = "SELECT FUN(a => '1', b => '2') FROM foo";
-    let select = verified_only_select(sql);
+    let select = dialects.verified_only_select(sql);
 
     assert_eq!(
         &Expr::Function(Function {
@@ -4422,14 +4423,14 @@ fn parse_named_argument_function() {
                 duplicate_treatment: None,
                 args: vec![
                     FunctionArg::Named {
-                        name: Expr::Identifier(Ident::new("a")),
+                        name: Ident::new("a"),
                         arg: FunctionArgExpr::Expr(Expr::Value(Value::SingleQuotedString(
                             "1".to_owned()
                         ))),
                         operator: FunctionArgOperator::RightArrow
                     },
                     FunctionArg::Named {
-                        name: Expr::Identifier(Ident::new("b")),
+                        name: Ident::new("b"),
                         arg: FunctionArgExpr::Expr(Expr::Value(Value::SingleQuotedString(
                             "2".to_owned()
                         ))),
@@ -4461,14 +4462,14 @@ fn parse_named_argument_function_with_eq_operator() {
                 duplicate_treatment: None,
                 args: vec![
                     FunctionArg::Named {
-                        name: Expr::Identifier(Ident::new("a")),
+                        name: Ident::new("a"),
                         arg: FunctionArgExpr::Expr(Expr::Value(Value::SingleQuotedString(
                             "1".to_owned()
                         ))),
                         operator: FunctionArgOperator::Equals
                     },
                     FunctionArg::Named {
-                        name: Expr::Identifier(Ident::new("b")),
+                        name: Ident::new("b"),
                         arg: FunctionArgExpr::Expr(Expr::Value(Value::SingleQuotedString(
                             "2".to_owned()
                         ))),

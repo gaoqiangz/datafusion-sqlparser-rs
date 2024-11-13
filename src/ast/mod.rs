@@ -5397,7 +5397,18 @@ impl fmt::Display for FunctionArgOperator {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
 pub enum FunctionArg {
+    /// `name` is identifier
+    ///
+    /// Enabled when `Dialect::supports_named_fn_args_with_expr_name` returns 'false'
     Named {
+        name: Ident,
+        arg: FunctionArgExpr,
+        operator: FunctionArgOperator,
+    },
+    /// `name` is arbitrary expression
+    ///
+    /// Enabled when `Dialect::supports_named_fn_args_with_expr_name` returns 'true'
+    ExprNamed {
         name: Expr,
         arg: FunctionArgExpr,
         operator: FunctionArgOperator,
@@ -5409,6 +5420,11 @@ impl fmt::Display for FunctionArg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             FunctionArg::Named {
+                name,
+                arg,
+                operator,
+            } => write!(f, "{name} {operator} {arg}"),
+            FunctionArg::ExprNamed {
                 name,
                 arg,
                 operator,
