@@ -46,6 +46,10 @@ impl Dialect for MsSqlDialect {
         true
     }
 
+    fn supports_outer_join_operator(&self) -> bool {
+        true
+    }
+
     fn supports_connect_by(&self) -> bool {
         true
     }
@@ -61,5 +65,40 @@ impl Dialect for MsSqlDialect {
     /// In MSSQL, there is no boolean type, and `true` and `false` are valid column names
     fn supports_boolean_literals(&self) -> bool {
         false
+    }
+
+    fn supports_named_fn_args_with_colon_operator(&self) -> bool {
+        true
+    }
+
+    fn supports_named_fn_args_with_expr_name(&self) -> bool {
+        true
+    }
+
+    fn supports_named_fn_args_with_rarrow_operator(&self) -> bool {
+        false
+    }
+
+    fn supports_start_transaction_modifier(&self) -> bool {
+        true
+    }
+
+    fn supports_end_transaction_modifier(&self) -> bool {
+        true
+    }
+
+    /// See: <https://learn.microsoft.com/en-us/sql/t-sql/statements/set-statements-transact-sql>
+    fn supports_set_stmt_without_operator(&self) -> bool {
+        true
+    }
+
+    /// See: <https://learn.microsoft.com/en-us/sql/relational-databases/tables/querying-data-in-a-system-versioned-temporal-table>
+    fn supports_timestamp_versioning(&self) -> bool {
+        true
+    }
+
+    /// See <https://learn.microsoft.com/en-us/sql/t-sql/language-elements/slash-star-comment-transact-sql?view=sql-server-ver16>
+    fn supports_nested_comments(&self) -> bool {
+        true
     }
 }

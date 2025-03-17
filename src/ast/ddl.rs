@@ -30,8 +30,11 @@ use sqlparser_derive::{Visit, VisitMut};
 
 use crate::ast::value::escape_single_quote_string;
 use crate::ast::{
-    display_comma_separated, display_separated, DataType, Expr, Ident, MySQLColumnPosition,
-    ObjectName, OrderByExpr, ProjectionSelect, SequenceOptions, SqlOption, Tag, Value,
+    display_comma_separated, display_separated, CommentDef, CreateFunctionBody,
+    CreateFunctionUsing, DataType, Expr, FunctionBehavior, FunctionCalledOnNull,
+    FunctionDeterminismSpecifier, FunctionParallel, Ident, MySQLColumnPosition, ObjectName,
+    OperateFunctionArg, OrderByExpr, ProjectionSelect, SequenceOptions, SqlOption, Tag, Value,
+    ValueWithSpan,
 };
 use crate::keywords::Keyword;
 use crate::tokenizer::Token;
@@ -63,13 +66,14 @@ pub enum AlterTableOperation {
         name: Ident,
         select: ProjectionSelect,
     },
-
     /// `DROP PROJECTION [IF EXISTS] name`
     ///
     /// Note: this is a ClickHouse-specific operation.
     /// Please refer to [ClickHouse](https://clickhouse.com/docs/en/sql-reference/statements/alter/projection#drop-projection)
-    DropProjection { if_exists: bool, name: Ident },
-
+    DropProjection {
+        if_exists: bool,
+        name: Ident,
+    },
     /// `MATERIALIZE PROJECTION [IF EXISTS] name [IN PARTITION partition_name]`
     ///
     ///  Note: this is a ClickHouse-specific operation.
@@ -79,7 +83,6 @@ pub enum AlterTableOperation {
         name: Ident,
         partition: Option<Ident>,
     },
-
     /// `CLEAR PROJECTION [IF EXISTS] name [IN PARTITION partition_name]`
     ///
     /// Note: this is a ClickHouse-specific operation.
@@ -89,7 +92,6 @@ pub enum AlterTableOperation {
         name: Ident,
         partition: Option<Ident>,
     },
-
     /// `DISABLE ROW LEVEL SECURITY`
     ///
     /// Note: this is a PostgreSQL-specific operation.
@@ -97,22 +99,26 @@ pub enum AlterTableOperation {
     /// `DISABLE RULE rewrite_rule_name`
     ///
     /// Note: this is a PostgreSQL-specific operation.
-    DisableRule { name: Ident },
+    DisableRule {
+        name: Ident,
+    },
     /// `DISABLE TRIGGER [ trigger_name | ALL | USER ]`
     ///
     /// Note: this is a PostgreSQL-specific operation.
-    DisableTrigger { name: Ident },
+    DisableTrigger {
+        name: Ident,
+    },
     /// `DROP CONSTRAINT [ IF EXISTS ] <name>`
     DropConstraint {
         if_exists: bool,
         name: Ident,
-        cascade: bool,
+        drop_behavior: Option<DropBehavior>,
     },
     /// `DROP [ COLUMN ] [ IF EXISTS ] <column_name> [ CASCADE ]`
     DropColumn {
         column_name: Ident,
         if_exists: bool,
-        cascade: bool,
+        drop_behavior: Option<DropBehavior>,
     },
     /// `ATTACH PART|PARTITION <partition_expr>`
     /// Note: this is a ClickHouse-specific operation, please refer to
@@ -145,24 +151,42 @@ pub enum AlterTableOperation {
     },
     /// `DROP PRIMARY KEY`
     ///
-    /// Note: this is a MySQL-specific operation.
+    /// Note: this is a [MySQL]-specific operation.
+    ///
+    /// [MySQL]: https://dev.mysql.com/doc/refman/8.4/en/alter-table.html
     DropPrimaryKey,
+    /// `DROP FOREIGN KEY <fk_symbol>`
+    ///
+    /// Note: this is a [MySQL]-specific operation.
+    ///
+    /// [MySQL]: https://dev.mysql.com/doc/refman/8.4/en/alter-table.html
+    DropForeignKey {
+        name: Ident,
+    },
     /// `ENABLE ALWAYS RULE rewrite_rule_name`
     ///
     /// Note: this is a PostgreSQL-specific operation.
-    EnableAlwaysRule { name: Ident },
+    EnableAlwaysRule {
+        name: Ident,
+    },
     /// `ENABLE ALWAYS TRIGGER trigger_name`
     ///
     /// Note: this is a PostgreSQL-specific operation.
-    EnableAlwaysTrigger { name: Ident },
+    EnableAlwaysTrigger {
+        name: Ident,
+    },
     /// `ENABLE REPLICA RULE rewrite_rule_name`
     ///
     /// Note: this is a PostgreSQL-specific operation.
-    EnableReplicaRule { name: Ident },
+    EnableReplicaRule {
+        name: Ident,
+    },
     /// `ENABLE REPLICA TRIGGER trigger_name`
     ///
     /// Note: this is a PostgreSQL-specific operation.
-    EnableReplicaTrigger { name: Ident },
+    EnableReplicaTrigger {
+        name: Ident,
+    },
     /// `ENABLE ROW LEVEL SECURITY`
     ///
     /// Note: this is a PostgreSQL-specific operation.
@@ -170,11 +194,15 @@ pub enum AlterTableOperation {
     /// `ENABLE RULE rewrite_rule_name`
     ///
     /// Note: this is a PostgreSQL-specific operation.
-    EnableRule { name: Ident },
+    EnableRule {
+        name: Ident,
+    },
     /// `ENABLE TRIGGER [ trigger_name | ALL | USER ]`
     ///
     /// Note: this is a PostgreSQL-specific operation.
-    EnableTrigger { name: Ident },
+    EnableTrigger {
+        name: Ident,
+    },
     /// `RENAME TO PARTITION (partition=val)`
     RenamePartitions {
         old_partitions: Vec<Expr>,
@@ -195,7 +223,9 @@ pub enum AlterTableOperation {
         new_column_name: Ident,
     },
     /// `RENAME TO <table_name>`
-    RenameTable { table_name: ObjectName },
+    RenameTable {
+        table_name: ObjectName,
+    },
     // CHANGE [ COLUMN ] <old_name> <new_name> <data_type> [ <options> ]
     ChangeColumn {
         old_name: Ident,
@@ -216,7 +246,10 @@ pub enum AlterTableOperation {
     /// `RENAME CONSTRAINT <old_constraint_name> TO <new_constraint_name>`
     ///
     /// Note: this is a PostgreSQL-specific operation.
-    RenameConstraint { old_name: Ident, new_name: Ident },
+    RenameConstraint {
+        old_name: Ident,
+        new_name: Ident,
+    },
     /// `ALTER [ COLUMN ]`
     AlterColumn {
         column_name: Ident,
@@ -225,14 +258,45 @@ pub enum AlterTableOperation {
     /// 'SWAP WITH <table_name>'
     ///
     /// Note: this is Snowflake specific <https://docs.snowflake.com/en/sql-reference/sql/alter-table>
-    SwapWith { table_name: ObjectName },
+    SwapWith {
+        table_name: ObjectName,
+    },
     /// 'SET TBLPROPERTIES ( { property_key [ = ] property_val } [, ...] )'
-    SetTblProperties { table_properties: Vec<SqlOption> },
-
+    SetTblProperties {
+        table_properties: Vec<SqlOption>,
+    },
     /// `OWNER TO { <new_owner> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }`
     ///
     /// Note: this is PostgreSQL-specific <https://www.postgresql.org/docs/current/sql-altertable.html>
-    OwnerTo { new_owner: Owner },
+    OwnerTo {
+        new_owner: Owner,
+    },
+    /// Snowflake table clustering options
+    /// <https://docs.snowflake.com/en/sql-reference/sql/alter-table#clustering-actions-clusteringaction>
+    ClusterBy {
+        exprs: Vec<Expr>,
+    },
+    DropClusteringKey,
+    SuspendRecluster,
+    ResumeRecluster,
+    /// `ALGORITHM [=] { DEFAULT | INSTANT | INPLACE | COPY }`
+    ///
+    /// [MySQL]-specific table alter algorithm.
+    ///
+    /// [MySQL]: https://dev.mysql.com/doc/refman/8.4/en/alter-table.html
+    Algorithm {
+        equals: bool,
+        algorithm: AlterTableAlgorithm,
+    },
+    /// `AUTO_INCREMENT [=] <value>`
+    ///
+    /// [MySQL]-specific table option for raising current auto increment value.
+    ///
+    /// [MySQL]: https://dev.mysql.com/doc/refman/8.4/en/alter-table.html
+    AutoIncrement {
+        equals: bool,
+        value: ValueWithSpan,
+    },
 }
 
 /// An `ALTER Policy` (`Statement::AlterPolicy`) operation
@@ -278,6 +342,30 @@ impl fmt::Display for AlterPolicyOperation {
     }
 }
 
+/// [MySQL] `ALTER TABLE` algorithm.
+///
+/// [MySQL]: https://dev.mysql.com/doc/refman/8.4/en/alter-table.html
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
+pub enum AlterTableAlgorithm {
+    Default,
+    Instant,
+    Inplace,
+    Copy,
+}
+
+impl fmt::Display for AlterTableAlgorithm {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(match self {
+            Self::Default => "DEFAULT",
+            Self::Instant => "INSTANT",
+            Self::Inplace => "INPLACE",
+            Self::Copy => "COPY",
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
@@ -295,6 +383,23 @@ impl fmt::Display for Owner {
             Owner::CurrentRole => write!(f, "CURRENT_ROLE"),
             Owner::CurrentUser => write!(f, "CURRENT_USER"),
             Owner::SessionUser => write!(f, "SESSION_USER"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
+pub enum AlterConnectorOwner {
+    User(Ident),
+    Role(Ident),
+}
+
+impl fmt::Display for AlterConnectorOwner {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            AlterConnectorOwner::User(ident) => write!(f, "USER {ident}"),
+            AlterConnectorOwner::Role(ident) => write!(f, "ROLE {ident}"),
         }
     }
 }
@@ -350,6 +455,14 @@ impl fmt::Display for AlterTableOperation {
                     write!(f, " IF NOT EXISTS")?;
                 }
                 write!(f, " {} ({})", name, query)
+            }
+            AlterTableOperation::Algorithm { equals, algorithm } => {
+                write!(
+                    f,
+                    "ALGORITHM {}{}",
+                    if *equals { "= " } else { "" },
+                    algorithm
+                )
             }
             AlterTableOperation::DropProjection { if_exists, name } => {
                 write!(f, "DROP PROJECTION")?;
@@ -412,27 +525,36 @@ impl fmt::Display for AlterTableOperation {
             AlterTableOperation::DropConstraint {
                 if_exists,
                 name,
-                cascade,
+                drop_behavior,
             } => {
                 write!(
                     f,
                     "DROP CONSTRAINT {}{}{}",
                     if *if_exists { "IF EXISTS " } else { "" },
                     name,
-                    if *cascade { " CASCADE" } else { "" },
+                    match drop_behavior {
+                        None => "",
+                        Some(DropBehavior::Restrict) => " RESTRICT",
+                        Some(DropBehavior::Cascade) => " CASCADE",
+                    }
                 )
             }
             AlterTableOperation::DropPrimaryKey => write!(f, "DROP PRIMARY KEY"),
+            AlterTableOperation::DropForeignKey { name } => write!(f, "DROP FOREIGN KEY {name}"),
             AlterTableOperation::DropColumn {
                 column_name,
                 if_exists,
-                cascade,
+                drop_behavior,
             } => write!(
                 f,
                 "DROP COLUMN {}{}{}",
                 if *if_exists { "IF EXISTS " } else { "" },
                 column_name,
-                if *cascade { " CASCADE" } else { "" }
+                match drop_behavior {
+                    None => "",
+                    Some(DropBehavior::Restrict) => " RESTRICT",
+                    Some(DropBehavior::Cascade) => " CASCADE",
+                }
             ),
             AlterTableOperation::AttachPartition { partition } => {
                 write!(f, "ATTACH {partition}")
@@ -546,6 +668,30 @@ impl fmt::Display for AlterTableOperation {
                 }
                 Ok(())
             }
+            AlterTableOperation::ClusterBy { exprs } => {
+                write!(f, "CLUSTER BY ({})", display_comma_separated(exprs))?;
+                Ok(())
+            }
+            AlterTableOperation::DropClusteringKey => {
+                write!(f, "DROP CLUSTERING KEY")?;
+                Ok(())
+            }
+            AlterTableOperation::SuspendRecluster => {
+                write!(f, "SUSPEND RECLUSTER")?;
+                Ok(())
+            }
+            AlterTableOperation::ResumeRecluster => {
+                write!(f, "RESUME RECLUSTER")?;
+                Ok(())
+            }
+            AlterTableOperation::AutoIncrement { equals, value } => {
+                write!(
+                    f,
+                    "AUTO_INCREMENT {}{}",
+                    if *equals { "= " } else { "" },
+                    value
+                )
+            }
         }
     }
 }
@@ -555,6 +701,95 @@ impl fmt::Display for AlterIndexOperation {
         match self {
             AlterIndexOperation::RenameIndex { index_name } => {
                 write!(f, "RENAME TO {index_name}")
+            }
+        }
+    }
+}
+
+/// An `ALTER TYPE` statement (`Statement::AlterType`)
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
+pub struct AlterType {
+    pub name: ObjectName,
+    pub operation: AlterTypeOperation,
+}
+
+/// An [AlterType] operation
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
+pub enum AlterTypeOperation {
+    Rename(AlterTypeRename),
+    AddValue(AlterTypeAddValue),
+    RenameValue(AlterTypeRenameValue),
+}
+
+/// See [AlterTypeOperation::Rename]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
+pub struct AlterTypeRename {
+    pub new_name: Ident,
+}
+
+/// See [AlterTypeOperation::AddValue]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
+pub struct AlterTypeAddValue {
+    pub if_not_exists: bool,
+    pub value: Ident,
+    pub position: Option<AlterTypeAddValuePosition>,
+}
+
+/// See [AlterTypeAddValue]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
+pub enum AlterTypeAddValuePosition {
+    Before(Ident),
+    After(Ident),
+}
+
+/// See [AlterTypeOperation::RenameValue]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
+pub struct AlterTypeRenameValue {
+    pub from: Ident,
+    pub to: Ident,
+}
+
+impl fmt::Display for AlterTypeOperation {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Rename(AlterTypeRename { new_name }) => {
+                write!(f, "RENAME TO {new_name}")
+            }
+            Self::AddValue(AlterTypeAddValue {
+                if_not_exists,
+                value,
+                position,
+            }) => {
+                write!(f, "ADD VALUE")?;
+                if *if_not_exists {
+                    write!(f, " IF NOT EXISTS")?;
+                }
+                write!(f, " {value}")?;
+                match position {
+                    Some(AlterTypeAddValuePosition::Before(neighbor_value)) => {
+                        write!(f, " BEFORE {neighbor_value}")?;
+                    }
+                    Some(AlterTypeAddValuePosition::After(neighbor_value)) => {
+                        write!(f, " AFTER {neighbor_value}")?;
+                    }
+                    None => {}
+                };
+                Ok(())
+            }
+            Self::RenameValue(AlterTypeRenameValue { from, to }) => {
+                write!(f, "RENAME VALUE {from} TO {to}")
             }
         }
     }
@@ -667,6 +902,8 @@ pub enum TableConstraint {
         columns: Vec<Ident>,
         index_options: Vec<IndexOption>,
         characteristics: Option<ConstraintCharacteristics>,
+        /// Optional Postgres nulls handling: `[ NULLS [ NOT ] DISTINCT ]`
+        nulls_distinct: NullsDistinctOption,
     },
     /// MySQL [definition][1] for `PRIMARY KEY` constraints statements:\
     /// * `[CONSTRAINT [<name>]] PRIMARY KEY [index_name] [index_type] (<columns>) <index_options>`
@@ -775,10 +1012,11 @@ impl fmt::Display for TableConstraint {
                 columns,
                 index_options,
                 characteristics,
+                nulls_distinct,
             } => {
                 write!(
                     f,
-                    "{}UNIQUE{index_type_display:>}{}{} ({})",
+                    "{}UNIQUE{nulls_distinct}{index_type_display:>}{}{} ({})",
                     display_constraint_name(name),
                     display_option_spaced(index_name),
                     display_option(" USING ", "", index_type),
@@ -827,12 +1065,14 @@ impl fmt::Display for TableConstraint {
             } => {
                 write!(
                     f,
-                    "{}FOREIGN KEY ({}) REFERENCES {}({})",
+                    "{}FOREIGN KEY ({}) REFERENCES {}",
                     display_constraint_name(name),
                     display_comma_separated(columns),
                     foreign_table,
-                    display_comma_separated(referred_columns),
                 )?;
+                if !referred_columns.is_empty() {
+                    write!(f, "({})", display_comma_separated(referred_columns))?;
+                }
                 if let Some(action) = on_delete {
                     write!(f, " ON DELETE {action}")?;
                 }
@@ -945,13 +1185,20 @@ impl fmt::Display for KeyOrIndexDisplay {
 /// [1]: https://dev.mysql.com/doc/refman/8.0/en/create-table.html
 /// [2]: https://dev.mysql.com/doc/refman/8.0/en/create-index.html
 /// [3]: https://www.postgresql.org/docs/14/sql-createindex.html
-#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
 pub enum IndexType {
     BTree,
     Hash,
-    // TODO add Postgresql's possible indexes
+    GIN,
+    GiST,
+    SPGiST,
+    BRIN,
+    Bloom,
+    /// Users may define their own index types, which would
+    /// not be covered by the above variants.
+    Custom(Ident),
 }
 
 impl fmt::Display for IndexType {
@@ -959,6 +1206,12 @@ impl fmt::Display for IndexType {
         match self {
             Self::BTree => write!(f, "BTREE"),
             Self::Hash => write!(f, "HASH"),
+            Self::GIN => write!(f, "GIN"),
+            Self::GiST => write!(f, "GIST"),
+            Self::SPGiST => write!(f, "SPGIST"),
+            Self::BRIN => write!(f, "BRIN"),
+            Self::Bloom => write!(f, "BLOOM"),
+            Self::Custom(name) => write!(f, "{}", name),
         }
     }
 }
@@ -986,6 +1239,31 @@ impl fmt::Display for IndexOption {
     }
 }
 
+/// [Postgres] unique index nulls handling option: `[ NULLS [ NOT ] DISTINCT ]`
+///
+/// [Postgres]: https://www.postgresql.org/docs/17/sql-altertable.html
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
+pub enum NullsDistinctOption {
+    /// Not specified
+    None,
+    /// NULLS DISTINCT
+    Distinct,
+    /// NULLS NOT DISTINCT
+    NotDistinct,
+}
+
+impl fmt::Display for NullsDistinctOption {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::None => Ok(()),
+            Self::Distinct => write!(f, " NULLS DISTINCT"),
+            Self::NotDistinct => write!(f, " NULLS NOT DISTINCT"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
@@ -1007,7 +1285,6 @@ impl fmt::Display for ProcedureParam {
 pub struct ColumnDef {
     pub name: Ident,
     pub data_type: DataType,
-    pub collation: Option<ObjectName>,
     pub options: Vec<ColumnOptionDef>,
 }
 
@@ -1017,9 +1294,6 @@ impl fmt::Display for ColumnDef {
             write!(f, "{}", self.name)?;
         } else {
             write!(f, "{} {}", self.name, self.data_type)?;
-        }
-        if let Some(collation) = &self.collation {
-            write!(f, " COLLATE {collation}")?;
         }
         for option in &self.options {
             write!(f, " {option}")?;
@@ -1327,15 +1601,18 @@ pub enum ColumnOption {
     /// `DEFAULT <restricted-expr>`
     Default(Expr),
 
-    /// ClickHouse supports `MATERIALIZE`, `EPHEMERAL` and `ALIAS` expr to generate default values.
-    /// Syntax: `b INT MATERIALIZE (a + 1)`
-    /// [ClickHouse](https://clickhouse.com/docs/en/sql-reference/statements/create/table#default_values)
-
     /// `MATERIALIZE <expr>`
+    /// Syntax: `b INT MATERIALIZE (a + 1)`
+    ///
+    /// [ClickHouse](https://clickhouse.com/docs/en/sql-reference/statements/create/table#default_values)
     Materialized(Expr),
     /// `EPHEMERAL [<expr>]`
+    ///
+    /// [ClickHouse](https://clickhouse.com/docs/en/sql-reference/statements/create/table#default_values)
     Ephemeral(Option<Expr>),
     /// `ALIAS <expr>`
+    ///
+    /// [ClickHouse](https://clickhouse.com/docs/en/sql-reference/statements/create/table#default_values)
     Alias(Expr),
 
     /// `{ PRIMARY KEY | UNIQUE } [<constraint_characteristics>]`
@@ -1364,6 +1641,7 @@ pub enum ColumnOption {
     /// - ...
     DialectSpecific(Vec<Token>),
     CharacterSet(ObjectName),
+    Collation(ObjectName),
     Comment(String),
     OnUpdate(Expr),
     /// `Generated`s are modifiers that follow a column definition in a `CREATE
@@ -1463,6 +1741,7 @@ impl fmt::Display for ColumnOption {
             Check(expr) => write!(f, "CHECK ({expr})"),
             DialectSpecific(val) => write!(f, "{}", display_separated(val, " ")),
             CharacterSet(n) => write!(f, "CHARACTER SET {n}"),
+            Collation(n) => write!(f, "COLLATE {n}"),
             Comment(v) => write!(f, "COMMENT '{}'", escape_single_quote_string(v)),
             OnUpdate(expr) => write!(f, "ON UPDATE {expr}"),
             Generated {
@@ -1552,7 +1831,7 @@ pub enum GeneratedExpressionMode {
 #[must_use]
 fn display_constraint_name(name: &'_ Option<Ident>) -> impl fmt::Display + '_ {
     struct ConstraintName<'a>(&'a Option<Ident>);
-    impl<'a> fmt::Display for ConstraintName<'a> {
+    impl fmt::Display for ConstraintName<'_> {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             if let Some(name) = self.0 {
                 write!(f, "CONSTRAINT {name} ")?;
@@ -1573,7 +1852,7 @@ fn display_option<'a, T: fmt::Display>(
     option: &'a Option<T>,
 ) -> impl fmt::Display + 'a {
     struct OptionDisplay<'a, T>(&'a str, &'a str, &'a Option<T>);
-    impl<'a, T: fmt::Display> fmt::Display for OptionDisplay<'a, T> {
+    impl<T: fmt::Display> fmt::Display for OptionDisplay<'_, T> {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             if let Some(inner) = self.2 {
                 let (prefix, postfix) = (self.0, self.1);
@@ -1698,6 +1977,26 @@ impl fmt::Display for ReferentialAction {
     }
 }
 
+/// `<drop behavior> ::= CASCADE | RESTRICT`.
+///
+/// Used in `DROP` statements.
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
+pub enum DropBehavior {
+    Restrict,
+    Cascade,
+}
+
+impl fmt::Display for DropBehavior {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(match self {
+            DropBehavior::Restrict => "RESTRICT",
+            DropBehavior::Cascade => "CASCADE",
+        })
+    }
+}
+
 /// SQL user defined type definition
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -1814,5 +2113,186 @@ impl fmt::Display for ClusteredBy {
             write!(f, " SORTED BY ({})", display_comma_separated(sorted_by))?;
         }
         write!(f, " INTO {} BUCKETS", self.num_buckets)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
+pub struct CreateFunction {
+    pub or_replace: bool,
+    pub temporary: bool,
+    pub if_not_exists: bool,
+    pub name: ObjectName,
+    pub args: Option<Vec<OperateFunctionArg>>,
+    pub return_type: Option<DataType>,
+    /// The expression that defines the function.
+    ///
+    /// Examples:
+    /// ```sql
+    /// AS ((SELECT 1))
+    /// AS "console.log();"
+    /// ```
+    pub function_body: Option<CreateFunctionBody>,
+    /// Behavior attribute for the function
+    ///
+    /// IMMUTABLE | STABLE | VOLATILE
+    ///
+    /// [Postgres](https://www.postgresql.org/docs/current/sql-createfunction.html)
+    pub behavior: Option<FunctionBehavior>,
+    /// CALLED ON NULL INPUT | RETURNS NULL ON NULL INPUT | STRICT
+    ///
+    /// [Postgres](https://www.postgresql.org/docs/current/sql-createfunction.html)
+    pub called_on_null: Option<FunctionCalledOnNull>,
+    /// PARALLEL { UNSAFE | RESTRICTED | SAFE }
+    ///
+    /// [Postgres](https://www.postgresql.org/docs/current/sql-createfunction.html)
+    pub parallel: Option<FunctionParallel>,
+    /// USING ... (Hive only)
+    pub using: Option<CreateFunctionUsing>,
+    /// Language used in a UDF definition.
+    ///
+    /// Example:
+    /// ```sql
+    /// CREATE FUNCTION foo() LANGUAGE js AS "console.log();"
+    /// ```
+    /// [BigQuery](https://cloud.google.com/bigquery/docs/reference/standard-sql/data-definition-language#create_a_javascript_udf)
+    pub language: Option<Ident>,
+    /// Determinism keyword used for non-sql UDF definitions.
+    ///
+    /// [BigQuery](https://cloud.google.com/bigquery/docs/reference/standard-sql/data-definition-language#syntax_11)
+    pub determinism_specifier: Option<FunctionDeterminismSpecifier>,
+    /// List of options for creating the function.
+    ///
+    /// [BigQuery](https://cloud.google.com/bigquery/docs/reference/standard-sql/data-definition-language#syntax_11)
+    pub options: Option<Vec<SqlOption>>,
+    /// Connection resource for a remote function.
+    ///
+    /// Example:
+    /// ```sql
+    /// CREATE FUNCTION foo()
+    /// RETURNS FLOAT64
+    /// REMOTE WITH CONNECTION us.myconnection
+    /// ```
+    /// [BigQuery](https://cloud.google.com/bigquery/docs/reference/standard-sql/data-definition-language#create_a_remote_function)
+    pub remote_connection: Option<ObjectName>,
+}
+
+impl fmt::Display for CreateFunction {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "CREATE {or_replace}{temp}FUNCTION {if_not_exists}{name}",
+            name = self.name,
+            temp = if self.temporary { "TEMPORARY " } else { "" },
+            or_replace = if self.or_replace { "OR REPLACE " } else { "" },
+            if_not_exists = if self.if_not_exists {
+                "IF NOT EXISTS "
+            } else {
+                ""
+            },
+        )?;
+        if let Some(args) = &self.args {
+            write!(f, "({})", display_comma_separated(args))?;
+        }
+        if let Some(return_type) = &self.return_type {
+            write!(f, " RETURNS {return_type}")?;
+        }
+        if let Some(determinism_specifier) = &self.determinism_specifier {
+            write!(f, " {determinism_specifier}")?;
+        }
+        if let Some(language) = &self.language {
+            write!(f, " LANGUAGE {language}")?;
+        }
+        if let Some(behavior) = &self.behavior {
+            write!(f, " {behavior}")?;
+        }
+        if let Some(called_on_null) = &self.called_on_null {
+            write!(f, " {called_on_null}")?;
+        }
+        if let Some(parallel) = &self.parallel {
+            write!(f, " {parallel}")?;
+        }
+        if let Some(remote_connection) = &self.remote_connection {
+            write!(f, " REMOTE WITH CONNECTION {remote_connection}")?;
+        }
+        if let Some(CreateFunctionBody::AsBeforeOptions(function_body)) = &self.function_body {
+            write!(f, " AS {function_body}")?;
+        }
+        if let Some(CreateFunctionBody::Return(function_body)) = &self.function_body {
+            write!(f, " RETURN {function_body}")?;
+        }
+        if let Some(using) = &self.using {
+            write!(f, " {using}")?;
+        }
+        if let Some(options) = &self.options {
+            write!(
+                f,
+                " OPTIONS({})",
+                display_comma_separated(options.as_slice())
+            )?;
+        }
+        if let Some(CreateFunctionBody::AsAfterOptions(function_body)) = &self.function_body {
+            write!(f, " AS {function_body}")?;
+        }
+        Ok(())
+    }
+}
+
+/// ```sql
+/// CREATE CONNECTOR [IF NOT EXISTS] connector_name
+/// [TYPE datasource_type]
+/// [URL datasource_url]
+/// [COMMENT connector_comment]
+/// [WITH DCPROPERTIES(property_name=property_value, ...)]
+/// ```
+///
+/// [Hive](https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=27362034#LanguageManualDDL-CreateDataConnectorCreateConnector)
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "visitor", derive(Visit, VisitMut))]
+pub struct CreateConnector {
+    pub name: Ident,
+    pub if_not_exists: bool,
+    pub connector_type: Option<String>,
+    pub url: Option<String>,
+    pub comment: Option<CommentDef>,
+    pub with_dcproperties: Option<Vec<SqlOption>>,
+}
+
+impl fmt::Display for CreateConnector {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "CREATE CONNECTOR {if_not_exists}{name}",
+            if_not_exists = if self.if_not_exists {
+                "IF NOT EXISTS "
+            } else {
+                ""
+            },
+            name = self.name,
+        )?;
+
+        if let Some(connector_type) = &self.connector_type {
+            write!(f, " TYPE '{connector_type}'")?;
+        }
+
+        if let Some(url) = &self.url {
+            write!(f, " URL '{url}'")?;
+        }
+
+        if let Some(comment) = &self.comment {
+            write!(f, " COMMENT = '{comment}'")?;
+        }
+
+        if let Some(with_dcproperties) = &self.with_dcproperties {
+            write!(
+                f,
+                " WITH DCPROPERTIES({})",
+                display_comma_separated(with_dcproperties)
+            )?;
+        }
+
+        Ok(())
     }
 }

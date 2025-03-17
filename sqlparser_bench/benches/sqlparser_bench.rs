@@ -23,9 +23,9 @@ fn basic_queries(c: &mut Criterion) {
     let mut group = c.benchmark_group("sqlparser-rs parsing benchmark");
     let dialect = GenericDialect {};
 
-    let string = "SELECT * FROM table WHERE 1 = 1";
+    let string = "SELECT * FROM my_table WHERE 1 = 1";
     group.bench_function("sqlparser::select", |b| {
-        b.iter(|| Parser::parse_sql(&dialect, string));
+        b.iter(|| Parser::parse_sql(&dialect, string).unwrap());
     });
 
     let with_query = "
@@ -33,14 +33,53 @@ fn basic_queries(c: &mut Criterion) {
             SELECT MAX(a) AS max_a,
                    COUNT(b) AS b_num,
                    user_id
-            FROM TABLE
+            FROM MY_TABLE
             GROUP BY user_id
         )
-        SELECT * FROM table
+        SELECT * FROM my_table
         LEFT JOIN derived USING (user_id)
     ";
     group.bench_function("sqlparser::with_select", |b| {
-        b.iter(|| Parser::parse_sql(&dialect, with_query));
+        b.iter(|| Parser::parse_sql(&dialect, with_query).unwrap());
+    });
+
+    let large_statement = {
+        let expressions = (0..1000)
+            .map(|n| format!("FN_{}(COL_{})", n, n))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let tables = (0..1000)
+            .map(|n| format!("TABLE_{}", n))
+            .collect::<Vec<_>>()
+            .join(" JOIN ");
+        let where_condition = (0..1000)
+            .map(|n| format!("COL_{} = {}", n, n))
+            .collect::<Vec<_>>()
+            .join(" OR ");
+        let order_condition = (0..1000)
+            .map(|n| format!("COL_{} DESC", n))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        format!(
+            "SELECT {} FROM {} WHERE {} ORDER BY {}",
+            expressions, tables, where_condition, order_condition
+        )
+    };
+
+    group.bench_function("parse_large_statement", |b| {
+        b.iter(|| Parser::parse_sql(&dialect, criterion::black_box(large_statement.as_str())));
+    });
+
+    let large_statement = Parser::parse_sql(&dialect, large_statement.as_str())
+        .unwrap()
+        .pop()
+        .unwrap();
+
+    group.bench_function("format_large_statement", |b| {
+        b.iter(|| {
+            let _formatted_query = large_statement.to_string();
+        });
     });
 }
 

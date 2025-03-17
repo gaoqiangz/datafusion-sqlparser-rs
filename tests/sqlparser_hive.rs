@@ -21,9 +21,9 @@
 //! is also tested (on the inputs it can handle).
 
 use sqlparser::ast::{
-    ClusteredBy, CommentDef, CreateFunctionBody, CreateFunctionUsing, CreateTable, Expr, Function,
-    FunctionArgumentList, FunctionArguments, Ident, ObjectName, OneOrManyWithParens, OrderByExpr,
-    SelectItem, Statement, TableFactor, UnaryOperator, Use, Value,
+    ClusteredBy, CommentDef, CreateFunction, CreateFunctionBody, CreateFunctionUsing, CreateTable,
+    Expr, Function, FunctionArgumentList, FunctionArguments, Ident, ObjectName, OrderByExpr,
+    OrderByOptions, SelectItem, Set, Statement, TableFactor, UnaryOperator, Use, Value,
 };
 use sqlparser::dialect::{GenericDialect, HiveDialect, MsSqlDialect};
 use sqlparser::parser::ParserError;
@@ -91,7 +91,7 @@ fn parse_msck() {
 }
 
 #[test]
-fn parse_set() {
+fn parse_set_hivevar() {
     let set = "SET HIVEVAR:name = a, b, c_d";
     hive().verified_stmt(set);
 }
@@ -170,14 +170,18 @@ fn create_table_with_clustered_by() {
                     sorted_by: Some(vec![
                         OrderByExpr {
                             expr: Expr::Identifier(Ident::new("a")),
-                            asc: Some(true),
-                            nulls_first: None,
+                            options: OrderByOptions {
+                                asc: Some(true),
+                                nulls_first: None,
+                            },
                             with_fill: None,
                         },
                         OrderByExpr {
                             expr: Expr::Identifier(Ident::new("b")),
-                            asc: Some(false),
-                            nulls_first: None,
+                            options: OrderByOptions {
+                                asc: Some(false),
+                                nulls_first: None,
+                            },
                             with_fill: None,
                         },
                     ]),
@@ -364,20 +368,20 @@ fn from_cte() {
 fn set_statement_with_minus() {
     assert_eq!(
         hive().verified_stmt("SET hive.tez.java.opts = -Xmx4g"),
-        Statement::SetVariable {
+        Statement::Set(Set::SingleAssignment {
             local: false,
             hivevar: false,
-            variables: OneOrManyWithParens::One(ObjectName(vec![
+            variable: ObjectName::from(vec![
                 Ident::new("hive"),
                 Ident::new("tez"),
                 Ident::new("java"),
                 Ident::new("opts")
-            ])),
-            value: vec![Expr::UnaryOp {
+            ]),
+            values: vec![Expr::UnaryOp {
                 op: UnaryOperator::Minus,
                 expr: Box::new(Expr::Identifier(Ident::new("Xmx4g")))
             }],
-        }
+        })
     );
 
     assert_eq!(
@@ -392,19 +396,20 @@ fn set_statement_with_minus() {
 fn parse_create_function() {
     let sql = "CREATE TEMPORARY FUNCTION mydb.myfunc AS 'org.random.class.Name' USING JAR 'hdfs://somewhere.com:8020/very/far'";
     match hive().verified_stmt(sql) {
-        Statement::CreateFunction {
+        Statement::CreateFunction(CreateFunction {
             temporary,
             name,
             function_body,
             using,
             ..
-        } => {
+        }) => {
             assert!(temporary);
             assert_eq!(name.to_string(), "mydb.myfunc");
             assert_eq!(
                 function_body,
                 Some(CreateFunctionBody::AsBeforeOptions(Expr::Value(
-                    Value::SingleQuotedString("org.random.class.Name".to_string())
+                    (Value::SingleQuotedString("org.random.class.Name".to_string()))
+                        .with_empty_span()
                 )))
             );
             assert_eq!(
@@ -457,8 +462,14 @@ fn parse_delimited_identifiers() {
             version,
             with_ordinality: _,
             partitions: _,
+            json_path: _,
+            sample: _,
+            index_hints: _,
         } => {
-            assert_eq!(vec![Ident::with_quote('"', "a table")], name.0);
+            assert_eq!(
+                ObjectName::from(vec![Ident::with_quote('"', "a table")]),
+                name
+            );
             assert_eq!(Ident::with_quote('"', "alias"), alias.unwrap().name);
             assert!(args.is_none());
             assert!(with_hints.is_empty());
@@ -477,7 +488,8 @@ fn parse_delimited_identifiers() {
     );
     assert_eq!(
         &Expr::Function(Function {
-            name: ObjectName(vec![Ident::with_quote('"', "myfun")]),
+            name: ObjectName::from(vec![Ident::with_quote('"', "myfun")]),
+            uses_odbc_syntax: false,
             parameters: FunctionArguments::None,
             args: FunctionArguments::List(FunctionArgumentList {
                 duplicate_treatment: None,
@@ -512,7 +524,7 @@ fn parse_use() {
         // Test single identifier without quotes
         assert_eq!(
             hive().verified_stmt(&format!("USE {}", object_name)),
-            Statement::Use(Use::Object(ObjectName(vec![Ident::new(
+            Statement::Use(Use::Object(ObjectName::from(vec![Ident::new(
                 object_name.to_string()
             )])))
         );
@@ -520,7 +532,7 @@ fn parse_use() {
             // Test single identifier with different type of quotes
             assert_eq!(
                 hive().verified_stmt(&format!("USE {}{}{}", quote, object_name, quote)),
-                Statement::Use(Use::Object(ObjectName(vec![Ident::with_quote(
+                Statement::Use(Use::Object(ObjectName::from(vec![Ident::with_quote(
                     quote,
                     object_name.to_string(),
                 )])))
@@ -532,6 +544,15 @@ fn parse_use() {
         hive().verified_stmt("USE DEFAULT"),
         Statement::Use(Use::Default)
     );
+}
+
+#[test]
+fn test_tample_sample() {
+    hive().verified_stmt("SELECT * FROM source TABLESAMPLE (BUCKET 3 OUT OF 32 ON rand()) AS s");
+    hive().verified_stmt("SELECT * FROM source TABLESAMPLE (BUCKET 3 OUT OF 16 ON id)");
+    hive().verified_stmt("SELECT * FROM source TABLESAMPLE (100M) AS s");
+    hive().verified_stmt("SELECT * FROM source TABLESAMPLE (0.1 PERCENT) AS s");
+    hive().verified_stmt("SELECT * FROM source TABLESAMPLE (10 ROWS)");
 }
 
 fn hive() -> TestedDialects {

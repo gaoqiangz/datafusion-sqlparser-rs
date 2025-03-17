@@ -19,17 +19,27 @@
 //! Test SQL syntax specific to MySQL. The parser based on the generic dialect
 //! is also tested (on the inputs it can handle).
 
+use helpers::attached_token::AttachedToken;
 use matches::assert_matches;
 
 use sqlparser::ast::MysqlInsertPriority::{Delayed, HighPriority, LowPriority};
 use sqlparser::ast::*;
 use sqlparser::dialect::{GenericDialect, MySqlDialect};
 use sqlparser::parser::{ParserError, ParserOptions};
+use sqlparser::tokenizer::Span;
 use sqlparser::tokenizer::Token;
 use test_utils::*;
 
 #[macro_use]
 mod test_utils;
+
+fn mysql() -> TestedDialects {
+    TestedDialects::new(vec![Box::new(MySqlDialect {})])
+}
+
+fn mysql_and_generic() -> TestedDialects {
+    TestedDialects::new(vec![Box::new(MySqlDialect {}), Box::new(GenericDialect {})])
+}
 
 #[test]
 fn parse_identifiers() {
@@ -42,11 +52,11 @@ fn parse_literal_string() {
     let select = mysql().verified_only_select(sql);
     assert_eq!(2, select.projection.len());
     assert_eq!(
-        &Expr::Value(Value::SingleQuotedString("single".to_string())),
+        &Expr::Value((Value::SingleQuotedString("single".to_string())).with_empty_span()),
         expr_from_projection(&select.projection[0])
     );
     assert_eq!(
-        &Expr::Value(Value::DoubleQuotedString("double".to_string())),
+        &Expr::Value((Value::DoubleQuotedString("double".to_string())).with_empty_span()),
         expr_from_projection(&select.projection[1])
     );
 }
@@ -139,19 +149,22 @@ fn parse_flush() {
             read_lock: false,
             export: false,
             tables: vec![
-                ObjectName(vec![
+                ObjectName::from(vec![
                     Ident {
                         value: "mek".to_string(),
-                        quote_style: Some('`')
+                        quote_style: Some('`'),
+                        span: Span::empty(),
                     },
                     Ident {
                         value: "table1".to_string(),
-                        quote_style: Some('`')
+                        quote_style: Some('`'),
+                        span: Span::empty(),
                     }
                 ]),
-                ObjectName(vec![Ident {
+                ObjectName::from(vec![Ident {
                     value: "table2".to_string(),
-                    quote_style: None
+                    quote_style: None,
+                    span: Span::empty(),
                 }])
             ]
         }
@@ -176,19 +189,22 @@ fn parse_flush() {
             read_lock: true,
             export: false,
             tables: vec![
-                ObjectName(vec![
+                ObjectName::from(vec![
                     Ident {
                         value: "mek".to_string(),
-                        quote_style: Some('`')
+                        quote_style: Some('`'),
+                        span: Span::empty(),
                     },
                     Ident {
                         value: "table1".to_string(),
-                        quote_style: Some('`')
+                        quote_style: Some('`'),
+                        span: Span::empty(),
                     }
                 ]),
-                ObjectName(vec![Ident {
+                ObjectName::from(vec![Ident {
                     value: "table2".to_string(),
-                    quote_style: None
+                    quote_style: None,
+                    span: Span::empty(),
                 }])
             ]
         }
@@ -202,19 +218,22 @@ fn parse_flush() {
             read_lock: false,
             export: true,
             tables: vec![
-                ObjectName(vec![
+                ObjectName::from(vec![
                     Ident {
                         value: "mek".to_string(),
-                        quote_style: Some('`')
+                        quote_style: Some('`'),
+                        span: Span::empty(),
                     },
                     Ident {
                         value: "table1".to_string(),
-                        quote_style: Some('`')
+                        quote_style: Some('`'),
+                        span: Span::empty(),
                     }
                 ]),
-                ObjectName(vec![Ident {
+                ObjectName::from(vec![Ident {
                     value: "table2".to_string(),
-                    quote_style: None
+                    quote_style: None,
+                    span: Span::empty(),
                 }])
             ]
         }
@@ -232,7 +251,7 @@ fn parse_show_columns() {
                 show_in: Some(ShowStatementIn {
                     clause: ShowStatementInClause::FROM,
                     parent_type: None,
-                    parent_name: Some(ObjectName(vec![Ident::new("mytable")])),
+                    parent_name: Some(ObjectName::from(vec![Ident::new("mytable")])),
                 }),
                 filter_position: None,
                 limit_from: None,
@@ -250,7 +269,10 @@ fn parse_show_columns() {
                 show_in: Some(ShowStatementIn {
                     clause: ShowStatementInClause::FROM,
                     parent_type: None,
-                    parent_name: Some(ObjectName(vec![Ident::new("mydb"), Ident::new("mytable")])),
+                    parent_name: Some(ObjectName::from(vec![
+                        Ident::new("mydb"),
+                        Ident::new("mytable")
+                    ])),
                 }),
                 filter_position: None,
                 limit_from: None,
@@ -268,7 +290,7 @@ fn parse_show_columns() {
                 show_in: Some(ShowStatementIn {
                     clause: ShowStatementInClause::FROM,
                     parent_type: None,
-                    parent_name: Some(ObjectName(vec![Ident::new("mytable")])),
+                    parent_name: Some(ObjectName::from(vec![Ident::new("mytable")])),
                 }),
                 filter_position: None,
                 limit_from: None,
@@ -286,7 +308,7 @@ fn parse_show_columns() {
                 show_in: Some(ShowStatementIn {
                     clause: ShowStatementInClause::FROM,
                     parent_type: None,
-                    parent_name: Some(ObjectName(vec![Ident::new("mytable")])),
+                    parent_name: Some(ObjectName::from(vec![Ident::new("mytable")])),
                 }),
                 filter_position: None,
                 limit_from: None,
@@ -304,7 +326,7 @@ fn parse_show_columns() {
                 show_in: Some(ShowStatementIn {
                     clause: ShowStatementInClause::FROM,
                     parent_type: None,
-                    parent_name: Some(ObjectName(vec![Ident::new("mytable")])),
+                    parent_name: Some(ObjectName::from(vec![Ident::new("mytable")])),
                 }),
                 filter_position: Some(ShowStatementFilterPosition::Suffix(
                     ShowStatementFilter::Like("pattern".into())
@@ -324,7 +346,7 @@ fn parse_show_columns() {
                 show_in: Some(ShowStatementIn {
                     clause: ShowStatementInClause::FROM,
                     parent_type: None,
-                    parent_name: Some(ObjectName(vec![Ident::new("mytable")])),
+                    parent_name: Some(ObjectName::from(vec![Ident::new("mytable")])),
                 }),
                 filter_position: Some(ShowStatementFilterPosition::Suffix(
                     ShowStatementFilter::Where(mysql_and_generic().verified_expr("1 = 2"))
@@ -411,7 +433,7 @@ fn parse_show_tables() {
                 show_in: Some(ShowStatementIn {
                     clause: ShowStatementInClause::FROM,
                     parent_type: None,
-                    parent_name: Some(ObjectName(vec![Ident::new("mydb")])),
+                    parent_name: Some(ObjectName::from(vec![Ident::new("mydb")])),
                 }),
                 filter_position: None
             }
@@ -515,7 +537,7 @@ fn parse_show_extended_full() {
 
 #[test]
 fn parse_show_create() {
-    let obj_name = ObjectName(vec![Ident::new("myident")]);
+    let obj_name = ObjectName::from(vec![Ident::new("myident")]);
 
     for obj_type in &[
         ShowCreateObject::Table,
@@ -572,7 +594,7 @@ fn parse_use() {
         // Test single identifier without quotes
         assert_eq!(
             mysql_and_generic().verified_stmt(&format!("USE {}", object_name)),
-            Statement::Use(Use::Object(ObjectName(vec![Ident::new(
+            Statement::Use(Use::Object(ObjectName::from(vec![Ident::new(
                 object_name.to_string()
             )])))
         );
@@ -581,7 +603,7 @@ fn parse_use() {
             assert_eq!(
                 mysql_and_generic()
                     .verified_stmt(&format!("USE {}{}{}", quote, object_name, quote)),
-                Statement::Use(Use::Object(ObjectName(vec![Ident::with_quote(
+                Statement::Use(Use::Object(ObjectName::from(vec![Ident::with_quote(
                     quote,
                     object_name.to_string(),
                 )])))
@@ -595,12 +617,12 @@ fn parse_set_variables() {
     mysql_and_generic().verified_stmt("SET sql_mode = CONCAT(@@sql_mode, ',STRICT_TRANS_TABLES')");
     assert_eq!(
         mysql_and_generic().verified_stmt("SET LOCAL autocommit = 1"),
-        Statement::SetVariable {
+        Statement::Set(Set::SingleAssignment {
             local: true,
             hivevar: false,
-            variables: OneOrManyWithParens::One(ObjectName(vec!["autocommit".into()])),
-            value: vec![Expr::Value(number("1"))],
-        }
+            variable: ObjectName::from(vec!["autocommit".into()]),
+            values: vec![Expr::value(number("1"))],
+        })
     );
 }
 
@@ -614,7 +636,6 @@ fn parse_create_table_auto_increment() {
                 vec![ColumnDef {
                     name: Ident::new("bar"),
                     data_type: DataType::Int(None),
-                    collation: None,
                     options: vec![
                         ColumnOptionDef {
                             name: None,
@@ -658,6 +679,7 @@ fn table_constraint_unique_primary_ctor(
             columns,
             index_options,
             characteristics,
+            nulls_distinct: NullsDistinctOption::None,
         },
         None => TableConstraint::PrimaryKey {
             name,
@@ -673,7 +695,7 @@ fn table_constraint_unique_primary_ctor(
 #[test]
 fn parse_create_table_primary_and_unique_key() {
     let sqls = ["UNIQUE KEY", "PRIMARY KEY"]
-        .map(|key_ty|format!("CREATE TABLE foo (id INT PRIMARY KEY AUTO_INCREMENT, bar INT NOT NULL, CONSTRAINT bar_key {key_ty} (bar))"));
+        .map(|key_ty| format!("CREATE TABLE foo (id INT PRIMARY KEY AUTO_INCREMENT, bar INT NOT NULL, CONSTRAINT bar_key {key_ty} (bar))"));
 
     let index_type_display = [Some(KeyOrIndexDisplay::Key), None];
 
@@ -703,7 +725,6 @@ fn parse_create_table_primary_and_unique_key() {
                         ColumnDef {
                             name: Ident::new("id"),
                             data_type: DataType::Int(None),
-                            collation: None,
                             options: vec![
                                 ColumnOptionDef {
                                     name: None,
@@ -723,7 +744,6 @@ fn parse_create_table_primary_and_unique_key() {
                         ColumnDef {
                             name: Ident::new("bar"),
                             data_type: DataType::Int(None),
-                            collation: None,
                             options: vec![ColumnOptionDef {
                                 name: None,
                                 option: ColumnOption::NotNull,
@@ -741,7 +761,7 @@ fn parse_create_table_primary_and_unique_key() {
 #[test]
 fn parse_create_table_primary_and_unique_key_with_index_options() {
     let sqls = ["UNIQUE INDEX", "PRIMARY KEY"]
-        .map(|key_ty|format!("CREATE TABLE foo (bar INT, var INT, CONSTRAINT constr {key_ty} index_name (bar, var) USING HASH COMMENT 'yes, ' USING BTREE COMMENT 'MySQL allows')"));
+        .map(|key_ty| format!("CREATE TABLE foo (bar INT, var INT, CONSTRAINT constr {key_ty} index_name (bar, var) USING HASH COMMENT 'yes, ' USING BTREE COMMENT 'MySQL allows')"));
 
     let index_type_display = [Some(KeyOrIndexDisplay::Index), None];
 
@@ -815,7 +835,7 @@ fn parse_create_table_primary_and_unique_key_with_index_type() {
 #[test]
 fn parse_create_table_primary_and_unique_key_characteristic_test() {
     let sqls = ["UNIQUE INDEX", "PRIMARY KEY"]
-        .map(|key_ty|format!("CREATE TABLE x (y INT, CONSTRAINT constr {key_ty} (y) NOT DEFERRABLE INITIALLY IMMEDIATE)"));
+        .map(|key_ty| format!("CREATE TABLE x (y INT, CONSTRAINT constr {key_ty} (y) NOT DEFERRABLE INITIALLY IMMEDIATE)"));
     for sql in &sqls {
         mysql_and_generic().verified_stmt(sql);
     }
@@ -873,13 +893,17 @@ fn parse_create_table_set_enum() {
                     ColumnDef {
                         name: Ident::new("bar"),
                         data_type: DataType::Set(vec!["a".to_string(), "b".to_string()]),
-                        collation: None,
                         options: vec![],
                     },
                     ColumnDef {
                         name: Ident::new("baz"),
-                        data_type: DataType::Enum(vec!["a".to_string(), "b".to_string()]),
-                        collation: None,
+                        data_type: DataType::Enum(
+                            vec![
+                                EnumMember::Name("a".to_string()),
+                                EnumMember::Name("b".to_string())
+                            ],
+                            None
+                        ),
                         options: vec![],
                     }
                 ],
@@ -906,7 +930,6 @@ fn parse_create_table_engine_default_charset() {
                 vec![ColumnDef {
                     name: Ident::new("id"),
                     data_type: DataType::Int(Some(11)),
-                    collation: None,
                     options: vec![],
                 },],
                 columns
@@ -939,7 +962,6 @@ fn parse_create_table_collate() {
                 vec![ColumnDef {
                     name: Ident::new("id"),
                     data_type: DataType::Int(Some(11)),
-                    collation: None,
                     options: vec![],
                 },],
                 columns
@@ -964,7 +986,9 @@ fn parse_create_table_both_options_and_as_query() {
             assert_eq!(collation, Some("utf8mb4_0900_ai_ci".to_string()));
             assert_eq!(
                 query.unwrap().body.as_select().unwrap().projection,
-                vec![SelectItem::UnnamedExpr(Expr::Value(number("1")))]
+                vec![SelectItem::UnnamedExpr(Expr::Value(
+                    (number("1")).with_empty_span()
+                ))]
             );
         }
         _ => unreachable!(),
@@ -987,11 +1011,10 @@ fn parse_create_table_comment_character_set() {
                 vec![ColumnDef {
                     name: Ident::new("s"),
                     data_type: DataType::Text,
-                    collation: None,
                     options: vec![
                         ColumnOptionDef {
                             name: None,
-                            option: ColumnOption::CharacterSet(ObjectName(vec![Ident::new(
+                            option: ColumnOption::CharacterSet(ObjectName::from(vec![Ident::new(
                                 "utf8mb4"
                             )]))
                         },
@@ -1034,7 +1057,6 @@ fn parse_quote_identifiers() {
                 vec![ColumnDef {
                     name: Ident::with_quote('`', "BEGIN"),
                     data_type: DataType::Int(None),
-                    collation: None,
                     options: vec![ColumnOptionDef {
                         name: None,
                         option: ColumnOption::Unique {
@@ -1058,12 +1080,14 @@ fn parse_escaped_quote_identifiers_with_escape() {
         Statement::Query(Box::new(Query {
             with: None,
             body: Box::new(SetExpr::Select(Box::new(Select {
+                select_token: AttachedToken::empty(),
                 distinct: None,
                 top: None,
                 top_before_distinct: false,
                 projection: vec![SelectItem::UnnamedExpr(Expr::Identifier(Ident {
                     value: "quoted ` identifier".into(),
                     quote_style: Some('`'),
+                    span: Span::empty(),
                 }))],
                 into: None,
                 from: vec![],
@@ -1080,11 +1104,10 @@ fn parse_escaped_quote_identifiers_with_escape() {
                 window_before_qualify: false,
                 value_table_mode: None,
                 connect_by: None,
+                flavor: SelectFlavor::Standard,
             }))),
             order_by: None,
-            limit: None,
-            limit_by: vec![],
-            offset: None,
+            limit_clause: None,
             fetch: None,
             locks: vec![],
             for_clause: None,
@@ -1109,12 +1132,14 @@ fn parse_escaped_quote_identifiers_with_no_escape() {
         Statement::Query(Box::new(Query {
             with: None,
             body: Box::new(SetExpr::Select(Box::new(Select {
+                select_token: AttachedToken::empty(),
                 distinct: None,
                 top: None,
                 top_before_distinct: false,
                 projection: vec![SelectItem::UnnamedExpr(Expr::Identifier(Ident {
                     value: "quoted `` identifier".into(),
                     quote_style: Some('`'),
+                    span: Span::empty(),
                 }))],
                 into: None,
                 from: vec![],
@@ -1131,11 +1156,10 @@ fn parse_escaped_quote_identifiers_with_no_escape() {
                 window_before_qualify: false,
                 value_table_mode: None,
                 connect_by: None,
+                flavor: SelectFlavor::Standard,
             }))),
             order_by: None,
-            limit: None,
-            limit_by: vec![],
-            offset: None,
+            limit_clause: None,
             fetch: None,
             locks: vec![],
             for_clause: None,
@@ -1153,12 +1177,15 @@ fn parse_escaped_backticks_with_escape() {
         Statement::Query(Box::new(Query {
             with: None,
             body: Box::new(SetExpr::Select(Box::new(Select {
+                select_token: AttachedToken::empty(),
+
                 distinct: None,
                 top: None,
                 top_before_distinct: false,
                 projection: vec![SelectItem::UnnamedExpr(Expr::Identifier(Ident {
                     value: "`quoted identifier`".into(),
                     quote_style: Some('`'),
+                    span: Span::empty(),
                 }))],
                 into: None,
                 from: vec![],
@@ -1175,11 +1202,10 @@ fn parse_escaped_backticks_with_escape() {
                 window_before_qualify: false,
                 value_table_mode: None,
                 connect_by: None,
+                flavor: SelectFlavor::Standard,
             }))),
             order_by: None,
-            limit: None,
-            limit_by: vec![],
-            offset: None,
+            limit_clause: None,
             fetch: None,
             locks: vec![],
             for_clause: None,
@@ -1201,12 +1227,15 @@ fn parse_escaped_backticks_with_no_escape() {
         Statement::Query(Box::new(Query {
             with: None,
             body: Box::new(SetExpr::Select(Box::new(Select {
+                select_token: AttachedToken::empty(),
+
                 distinct: None,
                 top: None,
                 top_before_distinct: false,
                 projection: vec![SelectItem::UnnamedExpr(Expr::Identifier(Ident {
                     value: "``quoted identifier``".into(),
                     quote_style: Some('`'),
+                    span: Span::empty(),
                 }))],
                 into: None,
                 from: vec![],
@@ -1223,11 +1252,10 @@ fn parse_escaped_backticks_with_no_escape() {
                 window_before_qualify: false,
                 value_table_mode: None,
                 connect_by: None,
+                flavor: SelectFlavor::Standard,
             }))),
             order_by: None,
-            limit: None,
-            limit_by: vec![],
-            offset: None,
+            limit_clause: None,
             fetch: None,
             locks: vec![],
             for_clause: None,
@@ -1283,31 +1311,26 @@ fn parse_create_table_with_minimum_display_width() {
                     ColumnDef {
                         name: Ident::new("bar_tinyint"),
                         data_type: DataType::TinyInt(Some(3)),
-                        collation: None,
                         options: vec![],
                     },
                     ColumnDef {
                         name: Ident::new("bar_smallint"),
                         data_type: DataType::SmallInt(Some(5)),
-                        collation: None,
                         options: vec![],
                     },
                     ColumnDef {
                         name: Ident::new("bar_mediumint"),
                         data_type: DataType::MediumInt(Some(6)),
-                        collation: None,
                         options: vec![],
                     },
                     ColumnDef {
                         name: Ident::new("bar_int"),
                         data_type: DataType::Int(Some(11)),
-                        collation: None,
                         options: vec![],
                     },
                     ColumnDef {
                         name: Ident::new("bar_bigint"),
                         data_type: DataType::BigInt(Some(20)),
-                        collation: None,
                         options: vec![],
                     }
                 ],
@@ -1328,32 +1351,27 @@ fn parse_create_table_unsigned() {
                 vec![
                     ColumnDef {
                         name: Ident::new("bar_tinyint"),
-                        data_type: DataType::UnsignedTinyInt(Some(3)),
-                        collation: None,
+                        data_type: DataType::TinyIntUnsigned(Some(3)),
                         options: vec![],
                     },
                     ColumnDef {
                         name: Ident::new("bar_smallint"),
-                        data_type: DataType::UnsignedSmallInt(Some(5)),
-                        collation: None,
+                        data_type: DataType::SmallIntUnsigned(Some(5)),
                         options: vec![],
                     },
                     ColumnDef {
                         name: Ident::new("bar_mediumint"),
-                        data_type: DataType::UnsignedMediumInt(Some(13)),
-                        collation: None,
+                        data_type: DataType::MediumIntUnsigned(Some(13)),
                         options: vec![],
                     },
                     ColumnDef {
                         name: Ident::new("bar_int"),
-                        data_type: DataType::UnsignedInt(Some(11)),
-                        collation: None,
+                        data_type: DataType::IntUnsigned(Some(11)),
                         options: vec![],
                     },
                     ColumnDef {
                         name: Ident::new("bar_bigint"),
-                        data_type: DataType::UnsignedBigInt(Some(20)),
-                        collation: None,
+                        data_type: DataType::BigIntUnsigned(Some(20)),
                         options: vec![],
                     },
                 ],
@@ -1370,13 +1388,16 @@ fn parse_simple_insert() {
 
     match mysql().verified_stmt(sql) {
         Statement::Insert(Insert {
-            table_name,
+            table: table_name,
             columns,
             source,
             on,
             ..
         }) => {
-            assert_eq!(ObjectName(vec![Ident::new("tasks")]), table_name);
+            assert_eq!(
+                TableObject::TableName(ObjectName::from(vec![Ident::new("tasks")])),
+                table_name
+            );
             assert_eq!(vec![Ident::new("title"), Ident::new("priority")], columns);
             assert!(on.is_none());
             assert_eq!(
@@ -1386,25 +1407,30 @@ fn parse_simple_insert() {
                         explicit_row: false,
                         rows: vec![
                             vec![
-                                Expr::Value(Value::SingleQuotedString(
-                                    "Test Some Inserts".to_string()
-                                )),
-                                Expr::Value(number("1"))
+                                Expr::Value(
+                                    (Value::SingleQuotedString("Test Some Inserts".to_string()))
+                                        .with_empty_span()
+                                ),
+                                Expr::value(number("1"))
                             ],
                             vec![
-                                Expr::Value(Value::SingleQuotedString("Test Entry 2".to_string())),
-                                Expr::Value(number("2"))
+                                Expr::Value(
+                                    (Value::SingleQuotedString("Test Entry 2".to_string()))
+                                        .with_empty_span()
+                                ),
+                                Expr::value(number("2"))
                             ],
                             vec![
-                                Expr::Value(Value::SingleQuotedString("Test Entry 3".to_string())),
-                                Expr::Value(number("3"))
+                                Expr::Value(
+                                    (Value::SingleQuotedString("Test Entry 3".to_string()))
+                                        .with_empty_span()
+                                ),
+                                Expr::value(number("3"))
                             ]
                         ]
                     })),
                     order_by: None,
-                    limit: None,
-                    limit_by: vec![],
-                    offset: None,
+                    limit_clause: None,
                     fetch: None,
                     locks: vec![],
                     for_clause: None,
@@ -1424,14 +1450,17 @@ fn parse_ignore_insert() {
 
     match mysql_and_generic().verified_stmt(sql) {
         Statement::Insert(Insert {
-            table_name,
+            table: table_name,
             columns,
             source,
             on,
             ignore,
             ..
         }) => {
-            assert_eq!(ObjectName(vec![Ident::new("tasks")]), table_name);
+            assert_eq!(
+                TableObject::TableName(ObjectName::from(vec![Ident::new("tasks")])),
+                table_name
+            );
             assert_eq!(vec![Ident::new("title"), Ident::new("priority")], columns);
             assert!(on.is_none());
             assert!(ignore);
@@ -1441,14 +1470,15 @@ fn parse_ignore_insert() {
                     body: Box::new(SetExpr::Values(Values {
                         explicit_row: false,
                         rows: vec![vec![
-                            Expr::Value(Value::SingleQuotedString("Test Some Inserts".to_string())),
-                            Expr::Value(number("1"))
+                            Expr::Value(
+                                (Value::SingleQuotedString("Test Some Inserts".to_string()))
+                                    .with_empty_span()
+                            ),
+                            Expr::value(number("1"))
                         ]]
                     })),
                     order_by: None,
-                    limit: None,
-                    limit_by: vec![],
-                    offset: None,
+                    limit_clause: None,
                     fetch: None,
                     locks: vec![],
                     for_clause: None,
@@ -1468,14 +1498,17 @@ fn parse_priority_insert() {
 
     match mysql_and_generic().verified_stmt(sql) {
         Statement::Insert(Insert {
-            table_name,
+            table: table_name,
             columns,
             source,
             on,
             priority,
             ..
         }) => {
-            assert_eq!(ObjectName(vec![Ident::new("tasks")]), table_name);
+            assert_eq!(
+                TableObject::TableName(ObjectName::from(vec![Ident::new("tasks")])),
+                table_name
+            );
             assert_eq!(vec![Ident::new("title"), Ident::new("priority")], columns);
             assert!(on.is_none());
             assert_eq!(priority, Some(HighPriority));
@@ -1485,14 +1518,15 @@ fn parse_priority_insert() {
                     body: Box::new(SetExpr::Values(Values {
                         explicit_row: false,
                         rows: vec![vec![
-                            Expr::Value(Value::SingleQuotedString("Test Some Inserts".to_string())),
-                            Expr::Value(number("1"))
+                            Expr::Value(
+                                (Value::SingleQuotedString("Test Some Inserts".to_string()))
+                                    .with_empty_span()
+                            ),
+                            Expr::value(number("1"))
                         ]]
                     })),
                     order_by: None,
-                    limit: None,
-                    limit_by: vec![],
-                    offset: None,
+                    limit_clause: None,
                     fetch: None,
                     locks: vec![],
                     for_clause: None,
@@ -1509,14 +1543,17 @@ fn parse_priority_insert() {
 
     match mysql().verified_stmt(sql2) {
         Statement::Insert(Insert {
-            table_name,
+            table: table_name,
             columns,
             source,
             on,
             priority,
             ..
         }) => {
-            assert_eq!(ObjectName(vec![Ident::new("tasks")]), table_name);
+            assert_eq!(
+                TableObject::TableName(ObjectName::from(vec![Ident::new("tasks")])),
+                table_name
+            );
             assert_eq!(vec![Ident::new("title"), Ident::new("priority")], columns);
             assert!(on.is_none());
             assert_eq!(priority, Some(LowPriority));
@@ -1526,14 +1563,15 @@ fn parse_priority_insert() {
                     body: Box::new(SetExpr::Values(Values {
                         explicit_row: false,
                         rows: vec![vec![
-                            Expr::Value(Value::SingleQuotedString("Test Some Inserts".to_string())),
-                            Expr::Value(number("1"))
+                            Expr::Value(
+                                (Value::SingleQuotedString("Test Some Inserts".to_string()))
+                                    .with_empty_span()
+                            ),
+                            Expr::value(number("1"))
                         ]]
                     })),
                     order_by: None,
-                    limit: None,
-                    limit_by: vec![],
-                    offset: None,
+                    limit_clause: None,
                     fetch: None,
                     locks: vec![],
                     for_clause: None,
@@ -1552,21 +1590,21 @@ fn parse_insert_as() {
     let sql = r"INSERT INTO `table` (`date`) VALUES ('2024-01-01') AS `alias`";
     match mysql_and_generic().verified_stmt(sql) {
         Statement::Insert(Insert {
-            table_name,
+            table: table_name,
             columns,
             source,
             insert_alias,
             ..
         }) => {
             assert_eq!(
-                ObjectName(vec![Ident::with_quote('`', "table")]),
+                TableObject::TableName(ObjectName::from(vec![Ident::with_quote('`', "table")])),
                 table_name
             );
             assert_eq!(vec![Ident::with_quote('`', "date")], columns);
             let insert_alias = insert_alias.unwrap();
 
             assert_eq!(
-                ObjectName(vec![Ident::with_quote('`', "alias")]),
+                ObjectName::from(vec![Ident::with_quote('`', "alias")]),
                 insert_alias.row_alias
             );
             assert_eq!(Some(vec![]), insert_alias.col_aliases);
@@ -1575,14 +1613,12 @@ fn parse_insert_as() {
                     with: None,
                     body: Box::new(SetExpr::Values(Values {
                         explicit_row: false,
-                        rows: vec![vec![Expr::Value(Value::SingleQuotedString(
-                            "2024-01-01".to_string()
-                        ))]]
+                        rows: vec![vec![Expr::Value(
+                            (Value::SingleQuotedString("2024-01-01".to_string())).with_empty_span()
+                        )]]
                     })),
                     order_by: None,
-                    limit: None,
-                    limit_by: vec![],
-                    offset: None,
+                    limit_clause: None,
                     fetch: None,
                     locks: vec![],
                     for_clause: None,
@@ -1604,14 +1640,14 @@ fn parse_insert_as() {
     let sql = r"INSERT INTO `table` (`id`, `date`) VALUES (1, '2024-01-01') AS `alias` (`mek_id`, `mek_date`)";
     match mysql_and_generic().verified_stmt(sql) {
         Statement::Insert(Insert {
-            table_name,
+            table: table_name,
             columns,
             source,
             insert_alias,
             ..
         }) => {
             assert_eq!(
-                ObjectName(vec![Ident::with_quote('`', "table")]),
+                TableObject::TableName(ObjectName::from(vec![Ident::with_quote('`', "table")])),
                 table_name
             );
             assert_eq!(
@@ -1620,7 +1656,7 @@ fn parse_insert_as() {
             );
             let insert_alias = insert_alias.unwrap();
             assert_eq!(
-                ObjectName(vec![Ident::with_quote('`', "alias")]),
+                ObjectName::from(vec![Ident::with_quote('`', "alias")]),
                 insert_alias.row_alias
             );
             assert_eq!(
@@ -1636,14 +1672,15 @@ fn parse_insert_as() {
                     body: Box::new(SetExpr::Values(Values {
                         explicit_row: false,
                         rows: vec![vec![
-                            Expr::Value(number("1")),
-                            Expr::Value(Value::SingleQuotedString("2024-01-01".to_string()))
+                            Expr::value(number("1")),
+                            Expr::Value(
+                                (Value::SingleQuotedString("2024-01-01".to_string()))
+                                    .with_empty_span()
+                            )
                         ]]
                     })),
                     order_by: None,
-                    limit: None,
-                    limit_by: vec![],
-                    offset: None,
+                    limit_clause: None,
                     fetch: None,
                     locks: vec![],
                     for_clause: None,
@@ -1662,7 +1699,7 @@ fn parse_replace_insert() {
     let sql = r"REPLACE DELAYED INTO tasks (title, priority) VALUES ('Test Some Inserts', 1)";
     match mysql().verified_stmt(sql) {
         Statement::Insert(Insert {
-            table_name,
+            table: table_name,
             columns,
             source,
             on,
@@ -1670,7 +1707,10 @@ fn parse_replace_insert() {
             priority,
             ..
         }) => {
-            assert_eq!(ObjectName(vec![Ident::new("tasks")]), table_name);
+            assert_eq!(
+                TableObject::TableName(ObjectName::from(vec![Ident::new("tasks")])),
+                table_name
+            );
             assert_eq!(vec![Ident::new("title"), Ident::new("priority")], columns);
             assert!(on.is_none());
             assert!(replace_into);
@@ -1681,14 +1721,15 @@ fn parse_replace_insert() {
                     body: Box::new(SetExpr::Values(Values {
                         explicit_row: false,
                         rows: vec![vec![
-                            Expr::Value(Value::SingleQuotedString("Test Some Inserts".to_string())),
-                            Expr::Value(number("1"))
+                            Expr::Value(
+                                (Value::SingleQuotedString("Test Some Inserts".to_string()))
+                                    .with_empty_span()
+                            ),
+                            Expr::value(number("1"))
                         ]]
                     })),
                     order_by: None,
-                    limit: None,
-                    limit_by: vec![],
-                    offset: None,
+                    limit_clause: None,
                     fetch: None,
                     locks: vec![],
                     for_clause: None,
@@ -1708,13 +1749,16 @@ fn parse_empty_row_insert() {
 
     match mysql().one_statement_parses_to(sql, "INSERT INTO tb VALUES (), ()") {
         Statement::Insert(Insert {
-            table_name,
+            table: table_name,
             columns,
             source,
             on,
             ..
         }) => {
-            assert_eq!(ObjectName(vec![Ident::new("tb")]), table_name);
+            assert_eq!(
+                TableObject::TableName(ObjectName::from(vec![Ident::new("tb")])),
+                table_name
+            );
             assert!(columns.is_empty());
             assert!(on.is_none());
             assert_eq!(
@@ -1725,9 +1769,7 @@ fn parse_empty_row_insert() {
                         rows: vec![vec![], vec![]]
                     })),
                     order_by: None,
-                    limit: None,
-                    limit_by: vec![],
-                    offset: None,
+                    limit_clause: None,
                     fetch: None,
                     locks: vec![],
                     for_clause: None,
@@ -1747,14 +1789,14 @@ fn parse_insert_with_on_duplicate_update() {
 
     match mysql().verified_stmt(sql) {
         Statement::Insert(Insert {
-            table_name,
+            table: table_name,
             columns,
             source,
             on,
             ..
         }) => {
             assert_eq!(
-                ObjectName(vec![Ident::new("permission_groups")]),
+                TableObject::TableName(ObjectName::from(vec![Ident::new("permission_groups")])),
                 table_name
             );
             assert_eq!(
@@ -1774,22 +1816,24 @@ fn parse_insert_with_on_duplicate_update() {
                     body: Box::new(SetExpr::Values(Values {
                         explicit_row: false,
                         rows: vec![vec![
-                            Expr::Value(Value::SingleQuotedString(
-                                "accounting_manager".to_string()
-                            )),
-                            Expr::Value(Value::SingleQuotedString(
-                                "Some description about the group".to_string()
-                            )),
-                            Expr::Value(Value::Boolean(true)),
-                            Expr::Value(Value::Boolean(true)),
-                            Expr::Value(Value::Boolean(true)),
-                            Expr::Value(Value::Boolean(true)),
+                            Expr::Value(
+                                (Value::SingleQuotedString("accounting_manager".to_string()))
+                                    .with_empty_span()
+                            ),
+                            Expr::Value(
+                                (Value::SingleQuotedString(
+                                    "Some description about the group".to_string()
+                                ))
+                                .with_empty_span()
+                            ),
+                            Expr::Value((Value::Boolean(true)).with_empty_span()),
+                            Expr::Value((Value::Boolean(true)).with_empty_span()),
+                            Expr::Value((Value::Boolean(true)).with_empty_span()),
+                            Expr::Value((Value::Boolean(true)).with_empty_span()),
                         ]]
                     })),
                     order_by: None,
-                    limit: None,
-                    limit_by: vec![],
-                    offset: None,
+                    limit_clause: None,
                     fetch: None,
                     locks: vec![],
                     for_clause: None,
@@ -1801,31 +1845,31 @@ fn parse_insert_with_on_duplicate_update() {
             assert_eq!(
                 Some(OnInsert::DuplicateKeyUpdate(vec![
                     Assignment {
-                        target: AssignmentTarget::ColumnName(ObjectName(vec![Ident::new(
+                        target: AssignmentTarget::ColumnName(ObjectName::from(vec![Ident::new(
                             "description".to_string()
                         )])),
                         value: call("VALUES", [Expr::Identifier(Ident::new("description"))]),
                     },
                     Assignment {
-                        target: AssignmentTarget::ColumnName(ObjectName(vec![Ident::new(
+                        target: AssignmentTarget::ColumnName(ObjectName::from(vec![Ident::new(
                             "perm_create".to_string()
                         )])),
                         value: call("VALUES", [Expr::Identifier(Ident::new("perm_create"))]),
                     },
                     Assignment {
-                        target: AssignmentTarget::ColumnName(ObjectName(vec![Ident::new(
+                        target: AssignmentTarget::ColumnName(ObjectName::from(vec![Ident::new(
                             "perm_read".to_string()
                         )])),
                         value: call("VALUES", [Expr::Identifier(Ident::new("perm_read"))]),
                     },
                     Assignment {
-                        target: AssignmentTarget::ColumnName(ObjectName(vec![Ident::new(
+                        target: AssignmentTarget::ColumnName(ObjectName::from(vec![Ident::new(
                             "perm_update".to_string()
                         )])),
                         value: call("VALUES", [Expr::Identifier(Ident::new("perm_update"))]),
                     },
                     Assignment {
-                        target: AssignmentTarget::ColumnName(ObjectName(vec![Ident::new(
+                        target: AssignmentTarget::ColumnName(ObjectName::from(vec![Ident::new(
                             "perm_delete".to_string()
                         )])),
                         value: call("VALUES", [Expr::Identifier(Ident::new("perm_delete"))]),
@@ -1846,6 +1890,8 @@ fn parse_select_with_numeric_prefix_column_name() {
             assert_eq!(
                 q.body,
                 Box::new(SetExpr::Select(Box::new(Select {
+                    select_token: AttachedToken::empty(),
+
                     distinct: None,
                     top: None,
                     top_before_distinct: false,
@@ -1854,15 +1900,9 @@ fn parse_select_with_numeric_prefix_column_name() {
                     )))],
                     into: None,
                     from: vec![TableWithJoins {
-                        relation: TableFactor::Table {
-                            name: ObjectName(vec![Ident::with_quote('"', "table")]),
-                            alias: None,
-                            args: None,
-                            with_hints: vec![],
-                            version: None,
-                            partitions: vec![],
-                            with_ordinality: false,
-                        },
+                        relation: table_from_name(ObjectName::from(vec![Ident::with_quote(
+                            '"', "table"
+                        )])),
                         joins: vec![]
                     }],
                     lateral_views: vec![],
@@ -1878,6 +1918,7 @@ fn parse_select_with_numeric_prefix_column_name() {
                     window_before_qualify: false,
                     value_table_mode: None,
                     connect_by: None,
+                    flavor: SelectFlavor::Standard,
                 })))
             );
         }
@@ -1901,24 +1942,20 @@ fn parse_select_with_concatenation_of_exp_number_and_numeric_prefix_column() {
             assert_eq!(
                 q.body,
                 Box::new(SetExpr::Select(Box::new(Select {
+                    select_token: AttachedToken::empty(),
+
                     distinct: None,
                     top: None,
                     top_before_distinct: false,
                     projection: vec![
-                        SelectItem::UnnamedExpr(Expr::Value(number("123e4"))),
+                        SelectItem::UnnamedExpr(Expr::value(number("123e4"))),
                         SelectItem::UnnamedExpr(Expr::Identifier(Ident::new("123col_$@123abc")))
                     ],
                     into: None,
                     from: vec![TableWithJoins {
-                        relation: TableFactor::Table {
-                            name: ObjectName(vec![Ident::with_quote('"', "table")]),
-                            alias: None,
-                            args: None,
-                            with_hints: vec![],
-                            version: None,
-                            partitions: vec![],
-                            with_ordinality: false,
-                        },
+                        relation: table_from_name(ObjectName::from(vec![Ident::with_quote(
+                            '"', "table"
+                        )])),
                         joins: vec![]
                     }],
                     lateral_views: vec![],
@@ -1934,6 +1971,7 @@ fn parse_select_with_concatenation_of_exp_number_and_numeric_prefix_column() {
                     window_before_qualify: false,
                     value_table_mode: None,
                     connect_by: None,
+                    flavor: SelectFlavor::Standard,
                 })))
             );
         }
@@ -1946,12 +1984,12 @@ fn parse_insert_with_numeric_prefix_column_name() {
     let sql = "INSERT INTO s1.t1 (123col_$@length123) VALUES (67.654)";
     match mysql().verified_stmt(sql) {
         Statement::Insert(Insert {
-            table_name,
+            table: table_name,
             columns,
             ..
         }) => {
             assert_eq!(
-                ObjectName(vec![Ident::new("s1"), Ident::new("t1")]),
+                TableObject::TableName(ObjectName::from(vec![Ident::new("s1"), Ident::new("t1")])),
                 table_name
             );
             assert_eq!(vec![Ident::new("123col_$@length123")], columns);
@@ -1970,11 +2008,12 @@ fn parse_update_with_joins() {
             from: _from,
             selection,
             returning,
+            or: None,
         } => {
             assert_eq!(
                 TableWithJoins {
                     relation: TableFactor::Table {
-                        name: ObjectName(vec![Ident::new("orders")]),
+                        name: ObjectName::from(vec![Ident::new("orders")]),
                         alias: Some(TableAlias {
                             name: Ident::new("o"),
                             columns: vec![]
@@ -1984,10 +2023,13 @@ fn parse_update_with_joins() {
                         version: None,
                         partitions: vec![],
                         with_ordinality: false,
+                        json_path: None,
+                        sample: None,
+                        index_hints: vec![],
                     },
                     joins: vec![Join {
                         relation: TableFactor::Table {
-                            name: ObjectName(vec![Ident::new("customers")]),
+                            name: ObjectName::from(vec![Ident::new("customers")]),
                             alias: Some(TableAlias {
                                 name: Ident::new("c"),
                                 columns: vec![]
@@ -1997,9 +2039,12 @@ fn parse_update_with_joins() {
                             version: None,
                             partitions: vec![],
                             with_ordinality: false,
+                            json_path: None,
+                            sample: None,
+                            index_hints: vec![],
                         },
                         global: false,
-                        join_operator: JoinOperator::Inner(JoinConstraint::On(Expr::BinaryOp {
+                        join_operator: JoinOperator::Join(JoinConstraint::On(Expr::BinaryOp {
                             left: Box::new(Expr::CompoundIdentifier(vec![
                                 Ident::new("o"),
                                 Ident::new("customer_id")
@@ -2016,11 +2061,11 @@ fn parse_update_with_joins() {
             );
             assert_eq!(
                 vec![Assignment {
-                    target: AssignmentTarget::ColumnName(ObjectName(vec![
+                    target: AssignmentTarget::ColumnName(ObjectName::from(vec![
                         Ident::new("o"),
                         Ident::new("completed")
                     ])),
-                    value: Expr::Value(Value::Boolean(true))
+                    value: Expr::Value((Value::Boolean(true)).with_empty_span())
                 }],
                 assignments
             );
@@ -2031,7 +2076,9 @@ fn parse_update_with_joins() {
                         Ident::new("firstname")
                     ])),
                     op: BinaryOperator::Eq,
-                    right: Box::new(Expr::Value(Value::SingleQuotedString("Peter".to_string())))
+                    right: Box::new(Expr::Value(
+                        (Value::SingleQuotedString("Peter".to_string())).with_empty_span()
+                    ))
                 }),
                 selection
             );
@@ -2050,10 +2097,13 @@ fn parse_delete_with_order_by() {
                 vec![OrderByExpr {
                     expr: Expr::Identifier(Ident {
                         value: "id".to_owned(),
-                        quote_style: None
+                        quote_style: None,
+                        span: Span::empty(),
                     }),
-                    asc: Some(false),
-                    nulls_first: None,
+                    options: OrderByOptions {
+                        asc: Some(false),
+                        nulls_first: None,
+                    },
                     with_fill: None,
                 }],
                 order_by
@@ -2068,7 +2118,7 @@ fn parse_delete_with_limit() {
     let sql = "DELETE FROM customers LIMIT 100";
     match mysql().verified_stmt(sql) {
         Statement::Delete(Delete { limit, .. }) => {
-            assert_eq!(Some(Expr::Value(number("100"))), limit);
+            assert_eq!(Some(Expr::value(number("100"))), limit);
         }
         _ => unreachable!(),
     }
@@ -2096,7 +2146,6 @@ fn parse_alter_table_add_column() {
                     column_def: ColumnDef {
                         name: "b".into(),
                         data_type: DataType::Int(None),
-                        collation: None,
                         options: vec![],
                     },
                     column_position: Some(MySQLColumnPosition::First),
@@ -2126,12 +2175,12 @@ fn parse_alter_table_add_column() {
                     column_def: ColumnDef {
                         name: "b".into(),
                         data_type: DataType::Int(None),
-                        collation: None,
                         options: vec![],
                     },
                     column_position: Some(MySQLColumnPosition::After(Ident {
                         value: String::from("foo"),
-                        quote_style: None
+                        quote_style: None,
+                        span: Span::empty(),
                     })),
                 },]
             );
@@ -2165,7 +2214,6 @@ fn parse_alter_table_add_columns() {
                         column_def: ColumnDef {
                             name: "a".into(),
                             data_type: DataType::Text,
-                            collation: None,
                             options: vec![],
                         },
                         column_position: Some(MySQLColumnPosition::First),
@@ -2176,12 +2224,12 @@ fn parse_alter_table_add_columns() {
                         column_def: ColumnDef {
                             name: "b".into(),
                             data_type: DataType::Int(None),
-                            collation: None,
                             options: vec![],
                         },
                         column_position: Some(MySQLColumnPosition::After(Ident {
                             value: String::from("foo"),
                             quote_style: None,
+                            span: Span::empty(),
                         })),
                     },
                 ]
@@ -2200,8 +2248,18 @@ fn parse_alter_table_drop_primary_key() {
 }
 
 #[test]
+fn parse_alter_table_drop_foreign_key() {
+    assert_matches!(
+        alter_table_op(
+            mysql_and_generic().verified_stmt("ALTER TABLE tab DROP FOREIGN KEY foo_ibfk_1")
+        ),
+        AlterTableOperation::DropForeignKey { name } if name.value == "foo_ibfk_1"
+    );
+}
+
+#[test]
 fn parse_alter_table_change_column() {
-    let expected_name = ObjectName(vec![Ident::new("orders")]);
+    let expected_name = ObjectName::from(vec![Ident::new("orders")]);
     let expected_operation = AlterTableOperation::ChangeColumn {
         old_name: Ident::new("description"),
         new_name: Ident::new("desc"),
@@ -2242,6 +2300,7 @@ fn parse_alter_table_change_column() {
         column_position: Some(MySQLColumnPosition::After(Ident {
             value: String::from("foo"),
             quote_style: None,
+            span: Span::empty(),
         })),
     };
     let sql4 = "ALTER TABLE orders CHANGE COLUMN description desc TEXT NOT NULL AFTER foo";
@@ -2252,7 +2311,7 @@ fn parse_alter_table_change_column() {
 
 #[test]
 fn parse_alter_table_change_column_with_column_position() {
-    let expected_name = ObjectName(vec![Ident::new("orders")]);
+    let expected_name = ObjectName::from(vec![Ident::new("orders")]);
     let expected_operation_first = AlterTableOperation::ChangeColumn {
         old_name: Ident::new("description"),
         new_name: Ident::new("desc"),
@@ -2281,6 +2340,7 @@ fn parse_alter_table_change_column_with_column_position() {
         column_position: Some(MySQLColumnPosition::After(Ident {
             value: String::from("total_count"),
             quote_style: None,
+            span: Span::empty(),
         })),
     };
 
@@ -2299,7 +2359,7 @@ fn parse_alter_table_change_column_with_column_position() {
 
 #[test]
 fn parse_alter_table_modify_column() {
-    let expected_name = ObjectName(vec![Ident::new("orders")]);
+    let expected_name = ObjectName::from(vec![Ident::new("orders")]);
     let expected_operation = AlterTableOperation::ModifyColumn {
         col_name: Ident::new("description"),
         data_type: DataType::Text,
@@ -2337,6 +2397,7 @@ fn parse_alter_table_modify_column() {
         column_position: Some(MySQLColumnPosition::After(Ident {
             value: String::from("foo"),
             quote_style: None,
+            span: Span::empty(),
         })),
     };
     let sql4 = "ALTER TABLE orders MODIFY COLUMN description TEXT NOT NULL AFTER foo";
@@ -2346,8 +2407,69 @@ fn parse_alter_table_modify_column() {
 }
 
 #[test]
+fn parse_alter_table_with_algorithm() {
+    let sql = "ALTER TABLE tab ALGORITHM = COPY";
+    let expected_operation = AlterTableOperation::Algorithm {
+        equals: true,
+        algorithm: AlterTableAlgorithm::Copy,
+    };
+    let operation = alter_table_op(mysql_and_generic().verified_stmt(sql));
+    assert_eq!(expected_operation, operation);
+
+    //  Check order doesn't matter
+    let sql =
+        "ALTER TABLE users DROP COLUMN password_digest, ALGORITHM = COPY, RENAME COLUMN name TO username";
+    let stmt = mysql_and_generic().verified_stmt(sql);
+    match stmt {
+        Statement::AlterTable { operations, .. } => {
+            assert_eq!(
+                operations,
+                vec![
+                    AlterTableOperation::DropColumn {
+                        column_name: Ident::new("password_digest"),
+                        if_exists: false,
+                        drop_behavior: None,
+                    },
+                    AlterTableOperation::Algorithm {
+                        equals: true,
+                        algorithm: AlterTableAlgorithm::Copy,
+                    },
+                    AlterTableOperation::RenameColumn {
+                        old_column_name: Ident::new("name"),
+                        new_column_name: Ident::new("username")
+                    },
+                ]
+            )
+        }
+        _ => panic!("Unexpected statement {stmt}"),
+    }
+
+    mysql_and_generic().verified_stmt("ALTER TABLE `users` ALGORITHM DEFAULT");
+    mysql_and_generic().verified_stmt("ALTER TABLE `users` ALGORITHM INSTANT");
+    mysql_and_generic().verified_stmt("ALTER TABLE `users` ALGORITHM INPLACE");
+    mysql_and_generic().verified_stmt("ALTER TABLE `users` ALGORITHM COPY");
+    mysql_and_generic().verified_stmt("ALTER TABLE `users` ALGORITHM = DEFAULT");
+    mysql_and_generic().verified_stmt("ALTER TABLE `users` ALGORITHM = INSTANT");
+    mysql_and_generic().verified_stmt("ALTER TABLE `users` ALGORITHM = INPLACE");
+    mysql_and_generic().verified_stmt("ALTER TABLE `users` ALGORITHM = COPY");
+}
+
+#[test]
+fn parse_alter_table_auto_increment() {
+    let sql = "ALTER TABLE tab AUTO_INCREMENT = 42";
+    let expected_operation = AlterTableOperation::AutoIncrement {
+        equals: true,
+        value: number("42").with_empty_span(),
+    };
+    let operation = alter_table_op(mysql().verified_stmt(sql));
+    assert_eq!(expected_operation, operation);
+
+    mysql_and_generic().verified_stmt("ALTER TABLE `users` AUTO_INCREMENT 42");
+}
+
+#[test]
 fn parse_alter_table_modify_column_with_column_position() {
-    let expected_name = ObjectName(vec![Ident::new("orders")]);
+    let expected_name = ObjectName::from(vec![Ident::new("orders")]);
     let expected_operation_first = AlterTableOperation::ModifyColumn {
         col_name: Ident::new("description"),
         data_type: DataType::Text,
@@ -2374,6 +2496,7 @@ fn parse_alter_table_modify_column_with_column_position() {
         column_position: Some(MySQLColumnPosition::After(Ident {
             value: String::from("total_count"),
             quote_style: None,
+            span: Span::empty(),
         })),
     };
 
@@ -2392,6 +2515,8 @@ fn parse_alter_table_modify_column_with_column_position() {
 
 #[test]
 fn parse_substring_in_select() {
+    use sqlparser::tokenizer::Span;
+
     let sql = "SELECT DISTINCT SUBSTRING(description, 0, 1) FROM test";
     match mysql().one_statement_parses_to(
         sql,
@@ -2402,32 +2527,31 @@ fn parse_substring_in_select() {
                 Box::new(Query {
                     with: None,
                     body: Box::new(SetExpr::Select(Box::new(Select {
+                        select_token: AttachedToken::empty(),
                         distinct: Some(Distinct::Distinct),
                         top: None,
                         top_before_distinct: false,
                         projection: vec![SelectItem::UnnamedExpr(Expr::Substring {
                             expr: Box::new(Expr::Identifier(Ident {
                                 value: "description".to_string(),
-                                quote_style: None
+                                quote_style: None,
+                                span: Span::empty(),
                             })),
-                            substring_from: Some(Box::new(Expr::Value(number("0")))),
-                            substring_for: Some(Box::new(Expr::Value(number("1")))),
+                            substring_from: Some(Box::new(Expr::Value(
+                                (number("0")).with_empty_span()
+                            ))),
+                            substring_for: Some(Box::new(Expr::Value(
+                                (number("1")).with_empty_span()
+                            ))),
                             special: true,
                         })],
                         into: None,
                         from: vec![TableWithJoins {
-                            relation: TableFactor::Table {
-                                name: ObjectName(vec![Ident {
-                                    value: "test".to_string(),
-                                    quote_style: None
-                                }]),
-                                alias: None,
-                                args: None,
-                                with_hints: vec![],
-                                version: None,
-                                partitions: vec![],
-                                with_ordinality: false,
-                            },
+                            relation: table_from_name(ObjectName::from(vec![Ident {
+                                value: "test".to_string(),
+                                quote_style: None,
+                                span: Span::empty(),
+                            }])),
                             joins: vec![]
                         }],
                         lateral_views: vec![],
@@ -2443,11 +2567,10 @@ fn parse_substring_in_select() {
                         qualify: None,
                         value_table_mode: None,
                         connect_by: None,
+                        flavor: SelectFlavor::Standard,
                     }))),
                     order_by: None,
-                    limit: None,
-                    limit_by: vec![],
-                    offset: None,
+                    limit_clause: None,
                     fetch: None,
                     locks: vec![],
                     for_clause: None,
@@ -2487,6 +2610,17 @@ fn parse_rlike_and_regexp() {
 }
 
 #[test]
+fn parse_like_with_escape() {
+    // verify backslash is not stripped for escaped wildcards
+    mysql().verified_only_select(r#"SELECT 'a\%c' LIKE 'a\%c'"#);
+    mysql().verified_only_select(r#"SELECT 'a\_c' LIKE 'a\_c'"#);
+    mysql().verified_only_select(r#"SELECT '%\_\%' LIKE '%\_\%'"#);
+    mysql().verified_only_select(r#"SELECT '\_\%' LIKE CONCAT('\_', '\%')"#);
+    mysql().verified_only_select(r#"SELECT 'a%c' LIKE 'a$%c' ESCAPE '$'"#);
+    mysql().verified_only_select(r#"SELECT 'a_c' LIKE 'a#_c' ESCAPE '#'"#);
+}
+
+#[test]
 fn parse_kill() {
     let stmt = mysql_and_generic().verified_stmt("KILL CONNECTION 5");
     assert_eq!(
@@ -2517,7 +2651,7 @@ fn parse_kill() {
 }
 
 #[test]
-fn parse_table_colum_option_on_update() {
+fn parse_table_column_option_on_update() {
     let sql1 = "CREATE TABLE foo (`modification_time` DATETIME ON UPDATE CURRENT_TIMESTAMP())";
     match mysql().verified_stmt(sql1) {
         Statement::CreateTable(CreateTable { name, columns, .. }) => {
@@ -2526,7 +2660,6 @@ fn parse_table_colum_option_on_update() {
                 vec![ColumnDef {
                     name: Ident::with_quote('`', "modification_time"),
                     data_type: DataType::Datetime(None),
-                    collation: None,
                     options: vec![ColumnOptionDef {
                         name: None,
                         option: ColumnOption::OnUpdate(call("CURRENT_TIMESTAMP", [])),
@@ -2544,19 +2677,19 @@ fn parse_set_names() {
     let stmt = mysql_and_generic().verified_stmt("SET NAMES utf8mb4");
     assert_eq!(
         stmt,
-        Statement::SetNames {
-            charset_name: "utf8mb4".to_string(),
+        Statement::Set(Set::SetNames {
+            charset_name: "utf8mb4".into(),
             collation_name: None,
-        }
+        })
     );
 
     let stmt = mysql_and_generic().verified_stmt("SET NAMES utf8mb4 COLLATE bogus");
     assert_eq!(
         stmt,
-        Statement::SetNames {
-            charset_name: "utf8mb4".to_string(),
+        Statement::Set(Set::SetNames {
+            charset_name: "utf8mb4".into(),
             collation_name: Some("bogus".to_string()),
-        }
+        })
     );
 
     let stmt = mysql_and_generic()
@@ -2564,22 +2697,20 @@ fn parse_set_names() {
         .unwrap();
     assert_eq!(
         stmt,
-        vec![Statement::SetNames {
-            charset_name: "utf8mb4".to_string(),
+        vec![Statement::Set(Set::SetNames {
+            charset_name: "utf8mb4".into(),
             collation_name: Some("bogus".to_string()),
-        }]
+        })]
     );
 
     let stmt = mysql_and_generic().verified_stmt("SET NAMES DEFAULT");
-    assert_eq!(stmt, Statement::SetNamesDefault {});
+    assert_eq!(stmt, Statement::Set(Set::SetNamesDefault {}));
 }
 
 #[test]
 fn parse_limit_my_sql_syntax() {
-    mysql_and_generic().one_statement_parses_to(
-        "SELECT id, fname, lname FROM customer LIMIT 5, 10",
-        "SELECT id, fname, lname FROM customer LIMIT 10 OFFSET 5",
-    );
+    mysql_and_generic().verified_stmt("SELECT id, fname, lname FROM customer LIMIT 10 OFFSET 5");
+    mysql_and_generic().verified_stmt("SELECT id, fname, lname FROM customer LIMIT 5, 10");
     mysql_and_generic().verified_stmt("SELECT * FROM user LIMIT ? OFFSET ?");
 }
 
@@ -2703,14 +2834,6 @@ fn parse_create_table_with_fulltext_definition_should_not_accept_constraint_name
     mysql_and_generic().verified_stmt("CREATE TABLE tb (c1 INT, CONSTRAINT cons FULLTEXT (c1))");
 }
 
-fn mysql() -> TestedDialects {
-    TestedDialects::new(vec![Box::new(MySqlDialect {})])
-}
-
-fn mysql_and_generic() -> TestedDialects {
-    TestedDialects::new(vec![Box::new(MySqlDialect {}), Box::new(GenericDialect {})])
-}
-
 #[test]
 fn parse_values() {
     mysql().verified_stmt("VALUES ROW(1, true, 'a')");
@@ -2724,6 +2847,7 @@ fn parse_hex_string_introducer() {
         Statement::Query(Box::new(Query {
             with: None,
             body: Box::new(SetExpr::Select(Box::new(Select {
+                select_token: AttachedToken::empty(),
                 distinct: None,
                 top: None,
                 top_before_distinct: false,
@@ -2746,11 +2870,10 @@ fn parse_hex_string_introducer() {
                 value_table_mode: None,
                 into: None,
                 connect_by: None,
+                flavor: SelectFlavor::Standard,
             }))),
             order_by: None,
-            limit: None,
-            limit_by: vec![],
-            offset: None,
+            limit_clause: None,
             fetch: None,
             locks: vec![],
             for_clause: None,
@@ -2817,19 +2940,27 @@ fn parse_convert_using() {
 #[test]
 fn parse_create_table_with_column_collate() {
     let sql = "CREATE TABLE tb (id TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci)";
-    let canonical = "CREATE TABLE tb (id TEXT COLLATE utf8mb4_0900_ai_ci CHARACTER SET utf8mb4)";
-    match mysql().one_statement_parses_to(sql, canonical) {
+    match mysql().verified_stmt(sql) {
         Statement::CreateTable(CreateTable { name, columns, .. }) => {
             assert_eq!(name.to_string(), "tb");
             assert_eq!(
                 vec![ColumnDef {
                     name: Ident::new("id"),
                     data_type: DataType::Text,
-                    collation: Some(ObjectName(vec![Ident::new("utf8mb4_0900_ai_ci")])),
-                    options: vec![ColumnOptionDef {
-                        name: None,
-                        option: ColumnOption::CharacterSet(ObjectName(vec![Ident::new("utf8mb4")]))
-                    }],
+                    options: vec![
+                        ColumnOptionDef {
+                            name: None,
+                            option: ColumnOption::CharacterSet(ObjectName::from(vec![Ident::new(
+                                "utf8mb4"
+                            )]))
+                        },
+                        ColumnOptionDef {
+                            name: None,
+                            option: ColumnOption::Collation(ObjectName::from(vec![Ident::new(
+                                "utf8mb4_0900_ai_ci"
+                            )]))
+                        }
+                    ],
                 },],
                 columns
             );
@@ -2890,7 +3021,7 @@ fn parse_json_table() {
             .from[0]
             .relation,
         TableFactor::JsonTable {
-            json_expr: Expr::Value(Value::SingleQuotedString("[1,2]".to_string())),
+            json_expr: Expr::Value((Value::SingleQuotedString("[1,2]".to_string())).with_empty_span()),
             json_path: Value::SingleQuotedString("$[*]".to_string()),
             columns: vec![
                 JsonTableColumn::Named(JsonTableNamedColumn {
@@ -2928,34 +3059,351 @@ fn parse_logical_xor() {
     let select = mysql_and_generic().verified_only_select(sql);
     assert_eq!(
         SelectItem::UnnamedExpr(Expr::BinaryOp {
-            left: Box::new(Expr::Value(Value::Boolean(true))),
+            left: Box::new(Expr::Value((Value::Boolean(true)).with_empty_span())),
             op: BinaryOperator::Xor,
-            right: Box::new(Expr::Value(Value::Boolean(true))),
+            right: Box::new(Expr::Value((Value::Boolean(true)).with_empty_span())),
         }),
         select.projection[0]
     );
     assert_eq!(
         SelectItem::UnnamedExpr(Expr::BinaryOp {
-            left: Box::new(Expr::Value(Value::Boolean(false))),
+            left: Box::new(Expr::Value((Value::Boolean(false)).with_empty_span())),
             op: BinaryOperator::Xor,
-            right: Box::new(Expr::Value(Value::Boolean(false))),
+            right: Box::new(Expr::Value((Value::Boolean(false)).with_empty_span())),
         }),
         select.projection[1]
     );
     assert_eq!(
         SelectItem::UnnamedExpr(Expr::BinaryOp {
-            left: Box::new(Expr::Value(Value::Boolean(true))),
+            left: Box::new(Expr::Value((Value::Boolean(true)).with_empty_span())),
             op: BinaryOperator::Xor,
-            right: Box::new(Expr::Value(Value::Boolean(false))),
+            right: Box::new(Expr::Value((Value::Boolean(false)).with_empty_span())),
         }),
         select.projection[2]
     );
     assert_eq!(
         SelectItem::UnnamedExpr(Expr::BinaryOp {
-            left: Box::new(Expr::Value(Value::Boolean(false))),
+            left: Box::new(Expr::Value((Value::Boolean(false)).with_empty_span())),
             op: BinaryOperator::Xor,
-            right: Box::new(Expr::Value(Value::Boolean(true))),
+            right: Box::new(Expr::Value((Value::Boolean(true)).with_empty_span())),
         }),
         select.projection[3]
     );
+}
+
+#[test]
+fn parse_bitstring_literal() {
+    let select = mysql_and_generic().verified_only_select("SELECT B'111'");
+    assert_eq!(
+        select.projection,
+        vec![SelectItem::UnnamedExpr(Expr::Value(
+            (Value::SingleQuotedByteStringLiteral("111".to_string())).with_empty_span()
+        ))]
+    );
+}
+
+#[test]
+fn parse_grant() {
+    let sql = "GRANT ALL ON *.* TO 'jeffrey'@'%'";
+    let stmt = mysql().verified_stmt(sql);
+    if let Statement::Grant {
+        privileges,
+        objects,
+        grantees,
+        with_grant_option,
+        granted_by,
+    } = stmt
+    {
+        assert_eq!(
+            privileges,
+            Privileges::All {
+                with_privileges_keyword: false
+            }
+        );
+        assert_eq!(
+            objects,
+            Some(GrantObjects::Tables(vec![ObjectName::from(vec![
+                "*".into(),
+                "*".into()
+            ])]))
+        );
+        assert!(!with_grant_option);
+        assert!(granted_by.is_none());
+        if let [Grantee {
+            grantee_type: GranteesType::None,
+            name: Some(GranteeName::UserHost { user, host }),
+        }] = grantees.as_slice()
+        {
+            assert_eq!(user.value, "jeffrey");
+            assert_eq!(user.quote_style, Some('\''));
+            assert_eq!(host.value, "%");
+            assert_eq!(host.quote_style, Some('\''));
+        } else {
+            unreachable!()
+        }
+    } else {
+        unreachable!()
+    }
+}
+
+#[test]
+fn parse_revoke() {
+    let sql = "REVOKE ALL ON db1.* FROM 'jeffrey'@'%'";
+    let stmt = mysql_and_generic().verified_stmt(sql);
+    if let Statement::Revoke {
+        privileges,
+        objects,
+        grantees,
+        granted_by,
+        cascade,
+    } = stmt
+    {
+        assert_eq!(
+            privileges,
+            Privileges::All {
+                with_privileges_keyword: false
+            }
+        );
+        assert_eq!(
+            objects,
+            Some(GrantObjects::Tables(vec![ObjectName::from(vec![
+                "db1".into(),
+                "*".into()
+            ])]))
+        );
+        if let [Grantee {
+            grantee_type: GranteesType::None,
+            name: Some(GranteeName::UserHost { user, host }),
+        }] = grantees.as_slice()
+        {
+            assert_eq!(user.value, "jeffrey");
+            assert_eq!(user.quote_style, Some('\''));
+            assert_eq!(host.value, "%");
+            assert_eq!(host.quote_style, Some('\''));
+        } else {
+            unreachable!()
+        }
+        assert!(granted_by.is_none());
+        assert!(cascade.is_none());
+    } else {
+        unreachable!()
+    }
+}
+
+#[test]
+fn parse_create_view_algorithm_param() {
+    let sql = "CREATE ALGORITHM = MERGE VIEW foo AS SELECT 1";
+    let stmt = mysql().verified_stmt(sql);
+    if let Statement::CreateView {
+        params:
+            Some(CreateViewParams {
+                algorithm,
+                definer,
+                security,
+            }),
+        ..
+    } = stmt
+    {
+        assert_eq!(algorithm, Some(CreateViewAlgorithm::Merge));
+        assert!(definer.is_none());
+        assert!(security.is_none());
+    } else {
+        unreachable!()
+    }
+    mysql().verified_stmt("CREATE ALGORITHM = UNDEFINED VIEW foo AS SELECT 1");
+    mysql().verified_stmt("CREATE ALGORITHM = TEMPTABLE VIEW foo AS SELECT 1");
+}
+
+#[test]
+fn parse_create_view_definer_param() {
+    let sql = "CREATE DEFINER = 'jeffrey'@'localhost' VIEW foo AS SELECT 1";
+    let stmt = mysql().verified_stmt(sql);
+    if let Statement::CreateView {
+        params:
+            Some(CreateViewParams {
+                algorithm,
+                definer,
+                security,
+            }),
+        ..
+    } = stmt
+    {
+        assert!(algorithm.is_none());
+        if let Some(GranteeName::UserHost { user, host }) = definer {
+            assert_eq!(user.value, "jeffrey");
+            assert_eq!(user.quote_style, Some('\''));
+            assert_eq!(host.value, "localhost");
+            assert_eq!(host.quote_style, Some('\''));
+        } else {
+            unreachable!()
+        }
+        assert!(security.is_none());
+    } else {
+        unreachable!()
+    }
+}
+
+#[test]
+fn parse_create_view_security_param() {
+    let sql = "CREATE SQL SECURITY DEFINER VIEW foo AS SELECT 1";
+    let stmt = mysql().verified_stmt(sql);
+    if let Statement::CreateView {
+        params:
+            Some(CreateViewParams {
+                algorithm,
+                definer,
+                security,
+            }),
+        ..
+    } = stmt
+    {
+        assert!(algorithm.is_none());
+        assert!(definer.is_none());
+        assert_eq!(security, Some(CreateViewSecurity::Definer));
+    } else {
+        unreachable!()
+    }
+    mysql().verified_stmt("CREATE SQL SECURITY INVOKER VIEW foo AS SELECT 1");
+}
+
+#[test]
+fn parse_create_view_multiple_params() {
+    let sql = "CREATE ALGORITHM = UNDEFINED DEFINER = `root`@`%` SQL SECURITY INVOKER VIEW foo AS SELECT 1";
+    let stmt = mysql().verified_stmt(sql);
+    if let Statement::CreateView {
+        params:
+            Some(CreateViewParams {
+                algorithm,
+                definer,
+                security,
+            }),
+        ..
+    } = stmt
+    {
+        assert_eq!(algorithm, Some(CreateViewAlgorithm::Undefined));
+        if let Some(GranteeName::UserHost { user, host }) = definer {
+            assert_eq!(user.value, "root");
+            assert_eq!(user.quote_style, Some('`'));
+            assert_eq!(host.value, "%");
+            assert_eq!(host.quote_style, Some('`'));
+        } else {
+            unreachable!()
+        }
+        assert_eq!(security, Some(CreateViewSecurity::Invoker));
+    } else {
+        unreachable!()
+    }
+}
+
+#[test]
+fn parse_longblob_type() {
+    let sql = "CREATE TABLE foo (bar LONGBLOB)";
+    let stmt = mysql_and_generic().verified_stmt(sql);
+    if let Statement::CreateTable(CreateTable { columns, .. }) = stmt {
+        assert_eq!(columns.len(), 1);
+        assert_eq!(columns[0].data_type, DataType::LongBlob);
+    } else {
+        unreachable!()
+    }
+    mysql_and_generic().verified_stmt("CREATE TABLE foo (bar TINYBLOB)");
+    mysql_and_generic().verified_stmt("CREATE TABLE foo (bar MEDIUMBLOB)");
+    mysql_and_generic().verified_stmt("CREATE TABLE foo (bar TINYTEXT)");
+    mysql_and_generic().verified_stmt("CREATE TABLE foo (bar MEDIUMTEXT)");
+    mysql_and_generic().verified_stmt("CREATE TABLE foo (bar LONGTEXT)");
+}
+
+#[test]
+fn parse_begin_without_transaction() {
+    mysql().verified_stmt("BEGIN");
+}
+
+#[test]
+fn parse_double_precision() {
+    mysql().verified_stmt("CREATE TABLE foo (bar DOUBLE)");
+    mysql().verified_stmt("CREATE TABLE foo (bar DOUBLE(11,0))");
+    mysql().one_statement_parses_to(
+        "CREATE TABLE foo (bar DOUBLE(11, 0))",
+        "CREATE TABLE foo (bar DOUBLE(11,0))",
+    );
+}
+
+#[test]
+fn parse_looks_like_single_line_comment() {
+    mysql().one_statement_parses_to(
+        "UPDATE account SET balance=balance--1 WHERE account_id=5752",
+        "UPDATE account SET balance = balance - -1 WHERE account_id = 5752",
+    );
+    mysql().one_statement_parses_to(
+        r#"
+            UPDATE account SET balance=balance-- 1
+            WHERE account_id=5752
+        "#,
+        "UPDATE account SET balance = balance WHERE account_id = 5752",
+    );
+}
+
+#[test]
+fn parse_create_trigger() {
+    let sql_create_trigger = r#"
+        CREATE TRIGGER emp_stamp BEFORE INSERT ON emp
+            FOR EACH ROW EXECUTE FUNCTION emp_stamp();
+    "#;
+    let create_stmt = mysql().one_statement_parses_to(sql_create_trigger, "");
+    assert_eq!(
+        create_stmt,
+        Statement::CreateTrigger {
+            or_replace: false,
+            is_constraint: false,
+            name: ObjectName::from(vec![Ident::new("emp_stamp")]),
+            period: TriggerPeriod::Before,
+            events: vec![TriggerEvent::Insert],
+            table_name: ObjectName::from(vec![Ident::new("emp")]),
+            referenced_table_name: None,
+            referencing: vec![],
+            trigger_object: TriggerObject::Row,
+            include_each: true,
+            condition: None,
+            exec_body: TriggerExecBody {
+                exec_type: TriggerExecBodyType::Function,
+                func_desc: FunctionDesc {
+                    name: ObjectName::from(vec![Ident::new("emp_stamp")]),
+                    args: None,
+                }
+            },
+            characteristics: None,
+        }
+    );
+}
+
+#[test]
+fn parse_drop_trigger() {
+    let sql_drop_trigger = "DROP TRIGGER emp_stamp;";
+    let drop_stmt = mysql().one_statement_parses_to(sql_drop_trigger, "");
+    assert_eq!(
+        drop_stmt,
+        Statement::DropTrigger {
+            if_exists: false,
+            trigger_name: ObjectName::from(vec![Ident::new("emp_stamp")]),
+            table_name: None,
+            option: None,
+        }
+    );
+}
+
+#[test]
+fn parse_cast_integers() {
+    mysql().verified_expr("CAST(foo AS UNSIGNED)");
+    mysql().verified_expr("CAST(foo AS SIGNED)");
+    mysql().verified_expr("CAST(foo AS UNSIGNED INTEGER)");
+    mysql().verified_expr("CAST(foo AS SIGNED INTEGER)");
+
+    mysql()
+        .run_parser_method("CAST(foo AS UNSIGNED(3))", |p| p.parse_expr())
+        .expect_err("CAST doesn't allow display width");
+    mysql()
+        .run_parser_method("CAST(foo AS UNSIGNED(3) INTEGER)", |p| p.parse_expr())
+        .expect_err("CAST doesn't allow display width");
+    mysql()
+        .run_parser_method("CAST(foo AS UNSIGNED INTEGER(3))", |p| p.parse_expr())
+        .expect_err("CAST doesn't allow display width");
 }

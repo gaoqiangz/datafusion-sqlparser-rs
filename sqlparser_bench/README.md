@@ -17,19 +17,26 @@
   under the License.
 -->
 
-# Changelog
-All notable changes to this project will be documented in one of the linked
-files. 
+Benchmarks for sqlparser. See [the main README](../README.md) for more information.
 
-This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Note: this is in a separate, non workspace crate to avoid adding a dependency 
+on `criterion` to the main crate (which complicates testing without std).
 
-Given that the parser produces a typed AST, any changes to the AST will
-technically be breaking and thus will result in a `0.(N+1)` version. 
+# Running Benchmarks
 
+```shell
+cargo bench --bench sqlparser_bench
+```
 
-- Unreleased: Check https://github.com/sqlparser-rs/sqlparser-rs/commits/main for undocumented changes.
-- `0.55.0`: [changelog/0.55.0.md](changelog/0.55.0.md)
-- `0.54.0`: [changelog/0.54.0.md](changelog/0.54.0.md)
-- `0.53.0`: [changelog/0.53.0.md](changelog/0.53.0.md)
-- `0.52.0`: [changelog/0.52.0.md](changelog/0.52.0.md)
-- `0.51.0` and earlier: [changelog/0.51.0-pre.md](changelog/0.51.0-pre.md)
+# Profiling
+
+Note you can generate a [flamegraph] using the following command:
+
+```shell
+cargo flamegraph --bench sqlparser_bench
+```
+
+[flamegraph]: https://crates.io/crates/flamegraph
+
+Here is an example flamegraph:
+![flamegraph](img/flamegraph.svg)
